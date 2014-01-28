@@ -143,6 +143,13 @@ def playvideo(magnetid):
     else:
         video = videos[0]
     title = urllib2.unquote(video['name'].encode('utf-8'))
+    surl = ''
+    subtinfo = '{0}/subtitle/autoload?gcid={1}&cid={2}&userid={3}&t={4}'.format(
+        urlpre, video['gcid'], video['cid'], xl.userid, cachetime)
+    subtitle = xl.urlopen(subtinfo)
+    sinfo = json.loads(xl.fetch(subtitle))
+    if 'subtitle' in sinfo and 'surl' in sinfo['subtitle']:
+        surl = sinfo['subtitle']['surl']
 
     voddl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
         urlpre ,xl.userid, video['gcid'], title, cachetime)
@@ -170,7 +177,16 @@ def playvideo(magnetid):
     #    print ck.name, ck.value
     listitem=xbmcgui.ListItem(label= title)
     listitem.setInfo(type="Video", infoLabels={'Title': title})
-    xbmc.Player().play(movurl, listitem)
+    player = xbmc.Player()
+    player.play(movurl, listitem)
+    if surl:
+        for _ in xrange(60):
+            if player.isPlaying():
+                break
+            time.sleep(1)
+        else:
+            raise Exception('No video playing. Aborted after 30 seconds.')
+        player.setSubtitles(surl)
     #xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
 
 @plugin.route('/dashboard')

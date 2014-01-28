@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<addon id="plugin.video.xunleicloud" name="XunleiCloud" version="0.1" provider-name="tacy.lee">
+<addon id="plugin.video.xunleicloud" name="XunleiCloud" version="0.2" provider-name="tacy.lee">
   <requires>
     <import addon="xbmc.python" version="2.1.0"/>
     <import addon="script.module.xbmcswift2" version="2.4.0"/>
@@ -14,7 +14,7 @@
     <summary lang="en">XunleiCloudPlay(magnet link play)</summary>
     <description lang="en">XunleiCloud plugin, support magnet link play use xunlei cloud play, only paying members.</description>
     <summary lang="zh">迅雷云播插件（会员版）</summary>
-    <description lang="zh">面向迅雷会员【有云播权限的】：[CR]特点：[CR]1、支持迅雷登入[CR]2、云播空间内容播放[CR]3、磁力链搜索（bt搜索引擎）[CR]4、磁力链播放（通过迅雷播放，只打算支持这个）[CR]目前只支持btdigg，后续完善支持oabt，暂时我觉得就够了，当然不排除有好的资源站点添加
+    <description lang="zh">面向迅雷会员【有云播权限的】：[CR]特点：[CR]1、支持迅雷登入[CR]2、云播空间内容播放[CR]3、磁力链搜索（bt搜索引擎）[CR]4、磁力链播放，支持迅雷在线字幕（通过迅雷播放，只打算支持这个）[CR]目前只支持btdigg，后续完善支持oabt，暂时我觉得就够了，当然不排除有好的资源站点添加
     </description>
   </extension>
 </addon>
