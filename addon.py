@@ -66,6 +66,7 @@ cookiefile = os.path.join(ppath, 'cookie.dat')
 xl = Xunlei(cookiefile)
 urlpre = 'http://i.vod.xunlei.com'
 cachetime = int(time.time()*1000)
+filters = plugin.get_storage('ftcache', TTL=1440)
 
 @plugin.route('/')
 def index():
@@ -73,6 +74,9 @@ def index():
         {'label': '登入迅雷', 'path': plugin.url_for('login')},
         {'label': '云播空间', 'path': plugin.url_for('dashboard')},
         {'label': 'BTdigg搜索', 'path': plugin.url_for('btdigg', url='search')},
+        {'label': '豆瓣电影', 'path': plugin.url_for('dbmovie')},
+        {'label': '豆瓣电影新片榜TOP10', 'path': plugin.url_for('dbntop')},
+        {'label': '豆瓣电影TOP250', 'path': plugin.url_for('dbtop', page=0)},
     ]
     return item
 
@@ -127,7 +131,7 @@ def playvideo(magnetid):
     else:
         ihash = magnetid
 
-    subbt = '%s/req_subBT/info_hash/%s/req_num/200/req_offset/0' % (
+    subbt = '%s/req_subBT/info_hash/%s/req_num/500/req_offset/0' % (
         urlpre, ihash)
 
     rsp = xl.urlopen(subbt)
@@ -202,15 +206,17 @@ def dashboard():
     return menu
 
 @plugin.route('/btdigg/<url>')
-def btdigg(url):
+@plugin.route('/btdigg/<url>/<mstr>', name='btsearch')
+def btdigg(url, mstr=''):
     if url in 'search':
         url = 'http://btdigg.org/search?q='
-        kb = Keyboard('',u'请输入搜索关键字')
-        kb.doModal()
-        if not kb.isConfirmed(): return
-        sstr = kb.getText()
-        if not sstr: return
-        url = url + urllib2.quote(sstr)
+        if not mstr:
+            kb = Keyboard('',u'请输入搜索关键字')
+            kb.doModal()
+            if not kb.isConfirmed(): return
+            mstr = kb.getText()
+            if not mstr: return
+        url = url + urllib2.quote(mstr)
     else:
         url = 'http://btdigg.org' + url
 
@@ -259,11 +265,108 @@ def addbt(magnetid):
     ihash = acinfo['resp']['res'][0]['url'][5:]
     return ihash
 
+@plugin.route('/dbmovie')
+def dbmovie():
+    if '类型' not in filters:
+        rsp = _http('http://movie.douban.com/category/')
+        fts = re.findall(
+            r'class="label">([^>]+?)</h4>\s+<ul>(.*?)</ul>', rsp, re.S)
+        typpatt = re.compile(r'<a href="#">([^>]+?)</a>')
+        for ft in fts:
+            typs = typpatt.findall(ft[1])
+            filters[ft[0]] =  tuple(typs)
+    typs = filters['类型']
+    menus = [{'label': t,
+              'path': plugin.url_for(
+                  'dbcate', typ=str({'types[]':t,}), page=1),
+              } for t in typs]
+    return menus
+
+@plugin.route('/dbcate/<typ>/<page>')
+def dbcate(typ, page):
+    params  = {'district': '', 'era': '', 'category': 'all',
+               'unwatched': 'false', 'available': 'false', 'sortBy': 'score',
+               'page': page, 'ck': 'null', 'types[]': ''}
+    typ = eval(typ)
+    if 'district' in typ and not typ['district']:
+        sel = dialog.select('地区', filters['地区'])
+        if sel is -1: return
+        typ['district'] = filters['地区'][sel]
+    if 'era' in typ and not typ['era']:
+        sel = dialog.select('年代', filters['年代'])
+        if sel is -1: return
+        typ['era'] = filters['年代'][sel]
+    params.update(typ)
+    data = urllib.urlencode(params)
+    rsp = _http('http://movie.douban.com/category/q', data)
+    minfo = json.loads(rsp)
+    menus = [{'label': '[%s].%s[%s][%s]' % (m['release_year'], m['title'],
+                                           m['rate'], m['abstract']),
+              'path': plugin.url_for(
+                  'btsearch', url='search',
+                  mstr=m['title'].split(' ')[0].encode('utf-8')),
+              'thumbnail': m['poster'],
+              } for m in minfo['subjects']]
+    if not menus: return
+    if int(page) > 1:
+        menus.append({'label': '上一页', 'path': plugin.url_for(
+            'dbcate', typ=str(typ), page=int(page)-1)})
+    menus.append({'label': '下一页', 'path': plugin.url_for(
+        'dbcate', typ=str(typ), page=int(page)+1)})
+    ntyp = typ.copy()
+    ntyp.update({'district': '', 'era': ''})
+    menus.insert(0, {
+        'label': '【按照条件过滤】【地区】【年代】选择',
+        'path': plugin.url_for('dbcate', page=1, typ=str(ntyp)),}
+    )
+    return menus
+
+@plugin.route('/dbntop')
+def dbntop():
+    '''
+    img, title, info, rate
+    '''
+    rsp = _http('http://movie.douban.com/chart')
+    mstr = r'%s%s' % ('nbg".*?src="(.*?)" alt="(.*?)"',
+                      '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
+    mpatt = re.compile(mstr, re.S)
+    mitems = mpatt.findall(rsp)
+    menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[1], i[3], i[2]),
+             'path': plugin.url_for('btsearch', url='search', mstr=i[1]),
+             'thumbnail': i[0],
+         } for s, i in enumerate(mitems)]
+    return menus
+
+@plugin.route('/dbtop<page>')
+def dbtop(page):
+    '''
+    title, img, info
+    '''
+    page = int(page)
+    pc = page * 25
+    rsp = _http('http://movie.douban.com/top250?start={0}'.format(pc))
+    mstr = r'class="item".*?alt="(.*?)" src="(.*?)".*?<p class="">\s+(.*?)</p>'
+    mpatt = re.compile(mstr, re.S)
+    mitems = mpatt.findall(rsp)
+    menus = [{'label': '{0}. {1}[{2}]'.format(s+pc+1, i[0], ''.join(
+        i[2].replace('&nbsp;', ' ').replace('<br>', ' ').replace(
+            '\n', ' ').split(' '))),
+              'path': plugin.url_for('btsearch', url='search', mstr=i[0]),
+              'thumbnail': i[1],
+         } for s, i in enumerate(mitems)]
+    if  page != 0:
+        menus.append({'label': '上一页',
+                      'path': plugin.url_for('dbtop', page=page-1)})
+    if page != 10:
+        menus.append({'label': '下一页',
+                      'path': plugin.url_for('dbtop', page=page+1)})
+    return menus
+
 def md5(s):
     import hashlib
     return hashlib.md5(s).hexdigest().lower()
 
-def _http(url):
+def _http(url, data=None):
     """
     open url
     """
@@ -272,7 +375,10 @@ def _http(url):
                    format('AppleWebKit/537.36 (KHTML, like Gecko) ',
                           'Chrome/28.0.1500.71 Safari/537.36'))
     req.add_header('Accept-encoding', 'gzip,deflate')
-    rsp = urllib2.urlopen(req, timeout=30)
+    if data:
+        rsp = urllib2.urlopen(req, data=data, timeout=30)
+    else:
+        rsp = urllib2.urlopen(req, timeout=30)
     if rsp.info().get('Content-Encoding') == 'gzip':
         buf = StringIO(rsp.read())
         f = gzip.GzipFile(fileobj=buf)
