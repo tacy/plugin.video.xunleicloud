@@ -234,7 +234,7 @@ def btdigg(url, mstr=''):
         '(\d+/\d+).*?(?:href="(/search.*?)")?>Next'))
 
     pgs = ppat.findall(rsp)
-    print pgs
+
     for s, p in enumerate((pgs[0][0], pgs[0][2])):
         if p:
             menus.append({'label': '上一页' if not s else '下一页',
