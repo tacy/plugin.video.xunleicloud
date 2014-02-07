@@ -13,10 +13,7 @@ from xbmcswift2 import xbmc
 from xbmcswift2 import Plugin
 from xbmcswift2 import xbmcgui
 from xbmcswift2 import xbmcplugin
-try:
-    from ChineseKeyboard import Keyboard
-except ImportError:
-    from xbmcswift2 import Keyboard
+from zhcnkbd import Keyboard
 
 class Xunlei(object):
     def __init__(self, cookiefile):
@@ -75,6 +72,8 @@ def index():
         {'label': '云播空间', 'path': plugin.url_for('dashboard')},
         {'label': 'BTdigg搜索', 'path': plugin.url_for('btdigg', url='search')},
         {'label': '豆瓣电影', 'path': plugin.url_for('dbmovie')},
+        {'label': '豆瓣影人搜索', 'path': plugin.url_for(
+            'dbactor', sstr='none', page=0)},
         {'label': '豆瓣电影新片榜TOP10', 'path': plugin.url_for('dbntop')},
         {'label': '豆瓣电影TOP250', 'path': plugin.url_for('dbtop', page=0)},
     ]
@@ -321,6 +320,43 @@ def dbcate(typ, page):
     )
     return menus
 
+@plugin.route('/dbactor/<sstr>/<page>')
+def dbactor(sstr, page):
+    urlpre = 'http://movie.douban.com/subject_search'
+    if 'none' in sstr:
+        kb = Keyboard('',u'请输入搜索关键字')
+        kb.doModal()
+        if not kb.isConfirmed(): return
+        sstr = kb.getText()
+    url = '%s/?search_text=%s&start=%s' % (urlpre ,sstr, str(int(page)*15))
+    rsp = _http(url)
+    rtxt = r'%s%s' % ('tr class="item".*?nbg".*?src="(.*?)" alt="(.*?)"',
+                      '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
+    patt = re.compile(rtxt, re.S)
+    mitems = patt.findall(rsp)
+    if not mitems: return
+    menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[1], i[3], i[2]),
+             'path': plugin.url_for('btsearch', url='search', mstr=i[1]),
+             'thumbnail': i[0],
+         } for s, i in enumerate(mitems)]
+
+    count = re.findall(r'class="count">.*?(\d+).*?</span>', rsp)
+    count = int(count[0])
+    page = int(page)
+    if page>0:
+        menus.append({
+            'label': '上一页',
+            'path': plugin.url_for('dbactor', sstr=sstr, page=page-1)})
+    if (page+1)*15 < count:
+        menus.append({
+            'label': '下一页',
+            'path': plugin.url_for('dbactor', sstr=sstr, page=page+1)})
+
+    menus.insert(0, {
+        'label': '【当前页%s/总共页%s】【放回上级菜单】' % (page+1, (count+14)//15),
+        'path': plugin.url_for('index')})
+    return menus
+
 @plugin.route('/dbntop')
 def dbntop():
     '''
@@ -337,7 +373,7 @@ def dbntop():
          } for s, i in enumerate(mitems)]
     return menus
 
-@plugin.route('/dbtop<page>')
+@plugin.route('/dbtop/<page>')
 def dbtop(page):
     '''
     title, img, info

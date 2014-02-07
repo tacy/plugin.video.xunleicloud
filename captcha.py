@@ -1,13 +1,11 @@
 # -*- coding: utf-8 -*-
-
 import os
 import sys
-import re
+import time
+import urllib
 import xbmc
 import xbmcgui
 from xbmcswift2 import Plugin
-
-import urllib2, urllib, httplib, time
 
 plugin = Plugin()
 pgpath = plugin.addon.getAddonInfo('path')
@@ -54,7 +52,6 @@ class InputWindow(xbmcgui.WindowXMLDialog):
     def onFocus( self, controlId ):
         self.controlId = controlId
 
-
     def onClick( self, controlID ):
         if controlID == CTRL_ID_CAPS:#big
             self.getControl(CTRL_ID_SYMB).setSelected(False)
@@ -96,10 +93,6 @@ class InputWindow(xbmcgui.WindowXMLDialog):
             self.disableMayus()
 
     def onAction(self,action):
-        #s1 = str(action.getId())
-        #s2 = str(action.getButtonCode())
-        #print "======="+s1+"========="+s2+"=========="
-
         if action == ACTION_PREVIOUS_MENU:
             self.close()
         else:
