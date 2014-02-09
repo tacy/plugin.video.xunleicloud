@@ -199,9 +199,9 @@ def dashboard():
     rsp = xl.urlopen(dhurl)
     vods = json.loads(xl.fetch(rsp))['resp']['history_play_list']
 
-    menu = [{'label': urllib2.unquote(vod['file_name'].encode('utf-8')),
-             'path': plugin.url_for('playvideo', magnetid=vod['url'][5:])
-             } for vod in vods]
+    menu = [{'label': urllib2.unquote(v['file_name'].encode('utf-8')),
+             'path': plugin.url_for('playvideo', magnetid=v['src_url'][5:])
+             } for v in vods if 'src_url' in v and 'bt' in v['src_url'][:3]]
     return menu
 
 @plugin.route('/btdigg/<url>')
