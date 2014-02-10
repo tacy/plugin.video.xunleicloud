@@ -93,8 +93,8 @@ def login():
     vfcode = xl.getcookieatt('.xunlei.com', 'check_result')[2:].upper()
 
     if not vfcode:
-        cdg = captcha.CaptchaDialog("","")
-        cdg.doModal()
+        cdg = cyaptcha.CaptchaDialog("","")
+        ccdg.doModal()
         confirmed = cdg.isConfirmed()
         if not confirmed:
             return
@@ -123,40 +123,45 @@ def login():
     #    print (ck.name, ck.value)
     return
 
-@plugin.route('/playvideo/<magnetid>')
-def playvideo(magnetid):
-    if 'magnet' in magnetid:
-        ihash = addbt(magnetid)
-    else:
-        ihash = magnetid
+@plugin.route('/playvideo/<vinfo>')
+def playvideo(vinfo):
+    protoc = vinfo[:10]
 
-    subbt = '%s/req_subBT/info_hash/%s/req_num/500/req_offset/0' % (
-        urlpre, ihash)
+    if 'bt' in protoc or 'magnet' in protoc:
+        if 'magnet' in vinfo:
+            ihash = addbt(vinfo)
+        else:
+            _vinfo = eval(vinfo)
+            ihash = _vinfo[0][5:45]
 
-    rsp = xl.urlopen(subbt)
-    vfinfo = json.loads(xl.fetch(rsp))
-    videos = vfinfo['resp']['subfile_list']
-    if len(videos) > 1:
-        selitem = dialog.select(
-            '播放选择',
-            [urllib2.unquote(v['name'].encode('utf-8')) for v in videos]
-        )
-        if selitem is -1: return
-        video = videos[selitem]
-    else:
-        video = videos[0]
-    title = urllib2.unquote(video['name'].encode('utf-8'))
-    surl = ''
-    subtinfo = '{0}/subtitle/autoload?gcid={1}&cid={2}&userid={3}&t={4}'.format(
-        urlpre, video['gcid'], video['cid'], xl.userid, cachetime)
-    subtitle = xl.urlopen(subtinfo)
-    sinfo = json.loads(xl.fetch(subtitle))
-    if 'subtitle' in sinfo and 'surl' in sinfo['subtitle']:
-        surl = sinfo['subtitle']['surl']
+        subbt = '%s/req_subBT/info_hash/%s/req_num/500/req_offset/0' % (
+            urlpre, ihash)
 
-    voddl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
-        urlpre ,xl.userid, video['gcid'], title, cachetime)
-    rsp = xl.urlopen(voddl)
+        rsp = xl.urlopen(subbt)
+        vfinfo = json.loads(xl.fetch(rsp))
+        videos = vfinfo['resp']['subfile_list']
+        if len(videos) > 1:
+            selitem = dialog.select(
+                '播放选择',
+                [urllib2.unquote(v['name'].encode('utf-8')) for v in videos]
+            )
+            if selitem is -1: return
+            video = videos[selitem]
+        else:
+            video = videos[0]
+            gcid = video['gcid']
+            cid = video['cid']
+            title = urllib2.unquote(video['name'].encode('utf-8'))
+    elif 'http' in protoc or 'thunder' in protoc or 'ed2k' in protoc:
+        _vinfo = eval(vinfo)
+        gcid = _vinfo[1]
+        cid = _vinfo[2]
+        title = urllib2.unquote(_vinfo[3].encode('utf-8'))
+    else: return
+
+    dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
+        urlpre ,xl.userid, gcid, title, cachetime)
+    rsp = xl.urlopen(dl)
     vturls = json.loads(xl.fetch(rsp))
     typ = {'Full_HD':'1080P', 'HD':'720P', 'SD':'标清'}
     vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
@@ -182,8 +187,17 @@ def playvideo(magnetid):
     listitem.setInfo(type="Video", infoLabels={'Title': title})
     player = xbmc.Player()
     player.play(movurl, listitem)
+
+    surl = ''
+    subtinfo = '{0}/subtitle/autoload?gcid={1}&cid={2}&userid={3}&t={4}'.format(
+        urlpre, gcid, cid, xl.userid, cachetime)
+    subtitle = xl.urlopen(subtinfo)
+    sinfo = json.loads(xl.fetch(subtitle))
+    if 'subtitle' in sinfo and 'surl' in sinfo['subtitle']:
+        surl = sinfo['subtitle']['surl']
+
     if surl:
-        for _ in xrange(60):
+        for _ in xrange(30):
             if player.isPlaying():
                 break
             time.sleep(1)
@@ -200,8 +214,10 @@ def dashboard():
     vods = json.loads(xl.fetch(rsp))['resp']['history_play_list']
 
     menu = [{'label': urllib2.unquote(v['file_name'].encode('utf-8')),
-             'path': plugin.url_for('playvideo', magnetid=v['src_url'][5:])
-             } for v in vods if 'src_url' in v and 'bt' in v['src_url'][:3]]
+             'path': plugin.url_for(
+                 'playvideo',
+                 vinfo=str((v['src_url'], v['gcid'], v['cid'], v['file_name'])))
+             } for v in vods if 'src_url' in v]
     return menu
 
 @plugin.route('/btdigg/<url>')
@@ -226,7 +242,7 @@ def btdigg(url, mstr=''):
 
     menus = [
         {'label': '%d.%s[%s]' % (s+1, v[0], v[2].replace('&nbsp;', '')),
-         'path': plugin.url_for('playvideo', magnetid=v[1])}
+         'path': plugin.url_for('playvideo', vinfo=v[1])}
         for s, v in enumerate(items)]
     ppat = re.compile(r'%s%s' % (
         'class="pager".*?(?:href="(/search.*?)")?>←.*?>',
@@ -273,6 +289,8 @@ def dbmovie():
         typpatt = re.compile(r'<a href="#">([^>]+?)</a>')
         for ft in fts:
             typs = typpatt.findall(ft[1])
+            if '类型' not in ft[0]:
+                typs.insert(0, '不限')
             filters[ft[0]] =  tuple(typs)
     typs = filters['类型']
     menus = [{'label': t,
@@ -297,7 +315,8 @@ def dbcate(typ, page):
         typ['era'] = filters['年代'][sel]
     params.update(typ)
     data = urllib.urlencode(params)
-    rsp = _http('http://movie.douban.com/category/q', data)
+    rsp = _http('http://movie.douban.com/category/q',
+                data.replace(urllib2.quote('不限'), ''))
     minfo = json.loads(rsp)
     menus = [{'label': '[%s].%s[%s][%s]' % (m['release_year'], m['title'],
                                            m['rate'], m['abstract']),
