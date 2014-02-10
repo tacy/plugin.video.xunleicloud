@@ -126,13 +126,12 @@ def login():
 @plugin.route('/playvideo/<vinfo>')
 def playvideo(vinfo):
     protoc = vinfo[:10]
-
     if 'bt' in protoc or 'magnet' in protoc:
         if 'magnet' in vinfo:
             ihash = addbt(vinfo)
         else:
             _vinfo = eval(vinfo)
-            ihash = _vinfo[0][5:45]
+            ihash = _vinfo[0][5:]
 
         subbt = '%s/req_subBT/info_hash/%s/req_num/500/req_offset/0' % (
             urlpre, ihash)
@@ -149,9 +148,9 @@ def playvideo(vinfo):
             video = videos[selitem]
         else:
             video = videos[0]
-            gcid = video['gcid']
-            cid = video['cid']
-            title = urllib2.unquote(video['name'].encode('utf-8'))
+        gcid = video['gcid']
+        cid = video['cid']
+        title = urllib2.unquote(video['name'].encode('utf-8'))
     elif 'http' in protoc or 'thunder' in protoc or 'ed2k' in protoc:
         _vinfo = eval(vinfo)
         gcid = _vinfo[1]
