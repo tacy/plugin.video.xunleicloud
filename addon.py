@@ -15,67 +15,22 @@ from xbmcswift2 import xbmcgui
 from xbmcswift2 import xbmcplugin
 from zhcnkbd import Keyboard
 
-class Xunlei(object):
-    def __init__(self, cookiefile):
-        self.cookiejar = cookielib.LWPCookieJar()
-        if os.path.exists(cookiefile):
-            self.cookiejar.load(
-                cookiefile, ignore_discard=True, ignore_expires=True)
-        self.userid = self.getcookieatt('.xunlei.com', 'userid')
-        self.sid = self.getcookieatt('.xunlei.com', 'sessionid')
-        self.opener = urllib2.build_opener(
-            urllib2.HTTPCookieProcessor(self.cookiejar))
-
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) {0}{1}'.format(
-                'AppleWebKit/537.36 (KHTML, like Gecko) ',
-                'Chrome/28.0.1500.71 Safari/537.36'),
-            'Accept-encoding': 'gzip,deflate',
-        }
-
-    def urlopen(self, url, **args):
-        if 'data' in args and type(args['data']) == dict:
-            args['data'] = json.dumps(args['data'])
-            #arg['data'] = urllib.urlencode(args['data'])
-            self.headers['Content-Type'] = 'application/json'
-        else:
-            self.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-        rs = self.opener.open(
-            urllib2.Request(url, headers=self.headers, **args), timeout=60)
-        return rs
-
-    def fetch(self,wstream):
-        if wstream.headers.get('content-encoding', '') == 'gzip':
-            content = gzip.GzipFile(fileobj=StringIO(wstream.read())).read()
-        else:
-            content = wstream.read()
-        return content
-
-    def getcookieatt(self, domain, attr):
-        if domain in self.cookiejar._cookies and attr in \
-           self.cookiejar._cookies[domain]['/']:
-            return self.cookiejar._cookies[domain]['/'][attr].value
-
 plugin = Plugin()
-dialog = xbmcgui.Dialog()
-ppath = plugin.addon.getAddonInfo('path')
-cookiefile = os.path.join(ppath, 'cookie.dat')
-xl = Xunlei(cookiefile)
-urlpre = 'http://i.vod.xunlei.com'
-cachetime = int(time.time()*1000)
-filters = plugin.get_storage('ftcache', TTL=1440)
 
 @plugin.route('/')
 def index():
     item = [
         {'label': '登入迅雷', 'path': plugin.url_for('login')},
         {'label': '云播空间', 'path': plugin.url_for('dashboard')},
-        {'label': 'BTdigg搜索', 'path': plugin.url_for('btdigg', url='search')},
-        {'label': '豆瓣电影', 'path': plugin.url_for('dbmovie')},
-        {'label': '豆瓣影人搜索', 'path': plugin.url_for(
-            'dbactor', sstr='none', page=0)},
-        {'label': '豆瓣电影新片榜TOP10', 'path': plugin.url_for('dbntop')},
-        {'label': '豆瓣电影TOP250', 'path': plugin.url_for('dbtop', page=0)},
+        {'label': '[中文搜索] - BTdigg.org',
+         'path': plugin.url_for('btdigg', url='search')},
+        {'label': '[英文搜索] - TorrentZ.eu',
+         'path': plugin.url_for('torrentz', url='search')},
+        {'label': '[豆瓣电影] - 分类浏览', 'path': plugin.url_for('dbmovie')},
+        {'label': '[豆瓣影人] - 影人作品搜索', 'path':
+         plugin.url_for('dbactor', url='search')},
+        {'label': '[豆瓣新片] - TOP10', 'path': plugin.url_for('dbntop')},
+        {'label': '[豆瓣电影] - TOP250', 'path': plugin.url_for('dbtop', page=0)},
     ]
     return item
 
@@ -102,8 +57,8 @@ def login():
         del cdg
 
     if not re.match(r'^[0-9a-f]{32}$', passwd):
-        passwd = md5(md5(passwd))
-    passwd = md5(passwd+vfcode)
+        passwd = xl.md5(xl.md5(passwd))
+    passwd = xl.md5(passwd+vfcode)
 
     data = urllib.urlencode({'u': user, 'p': passwd, 'verifycode': vfcode,
                              'login_enable':'1', 'login_hour':'720',})
@@ -135,9 +90,8 @@ def playvideo(vinfo):
 
         subbt = '%s/req_subBT/info_hash/%s/req_num/500/req_offset/0' % (
             urlpre, ihash)
-
         rsp = xl.urlopen(subbt)
-        vfinfo = json.loads(xl.fetch(rsp))
+        vfinfo = json.loads(rsp)
         videos = vfinfo['resp']['subfile_list']
         if len(videos) > 1:
             selitem = dialog.select(
@@ -150,18 +104,18 @@ def playvideo(vinfo):
             video = videos[0]
         gcid = video['gcid']
         cid = video['cid']
-        title = urllib2.unquote(video['name'].encode('utf-8'))
+        title = urllib2.quote(video['name'].encode('utf-8'))
     elif 'http' in protoc or 'thunder' in protoc or 'ed2k' in protoc:
         _vinfo = eval(vinfo)
         gcid = _vinfo[1]
         cid = _vinfo[2]
-        title = urllib2.unquote(_vinfo[3].encode('utf-8'))
+        title = urllib2.quote(_vinfo[3].encode('utf-8'))
     else: return
 
     dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
         urlpre ,xl.userid, gcid, title, cachetime)
     rsp = xl.urlopen(dl)
-    vturls = json.loads(xl.fetch(rsp))
+    vturls = json.loads(rsp)
     typ = {'Full_HD':'1080P', 'HD':'720P', 'SD':'标清'}
     vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
 
@@ -188,21 +142,22 @@ def playvideo(vinfo):
     player.play(movurl, listitem)
 
     surl = ''
-    subtinfo = '{0}/subtitle/autoload?gcid={1}&cid={2}&userid={3}&t={4}'.format(
+    subtinfo = '{0}/subtitle/list?gcid={1}&cid={2}&userid={3}&t={4}'.format(
         urlpre, gcid, cid, xl.userid, cachetime)
     subtitle = xl.urlopen(subtinfo)
-    sinfo = json.loads(xl.fetch(subtitle))
-    if 'subtitle' in sinfo and 'surl' in sinfo['subtitle']:
-        surl = sinfo['subtitle']['surl']
-
-    if surl:
+    sinfos = json.loads(subtitle)
+    surls = ''
+    if 'sublist' in sinfos and len(sinfos['sublist']):
+        surls = [sinfo['surl'] for sinfo in sinfos['sublist']]
+    if surls:
         for _ in xrange(30):
             if player.isPlaying():
                 break
             time.sleep(1)
         else:
             raise Exception('No video playing. Aborted after 30 seconds.')
-        player.setSubtitles(surl)
+        for surl in surls:
+            player.setSubtitles(surl)
     #xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
 
 @plugin.route('/dashboard')
@@ -210,7 +165,7 @@ def dashboard():
     dhurl = '%s/%s/?type=all&order=create&t=%s' % (
         urlpre, 'req_history_play_list/req_num/200/req_offset/0', cachetime)
     rsp = xl.urlopen(dhurl)
-    vods = json.loads(xl.fetch(rsp))['resp']['history_play_list']
+    vods = json.loads(rsp)['resp']['history_play_list']
 
     menu = [{'label': urllib2.unquote(v['file_name'].encode('utf-8')),
              'path': plugin.url_for(
@@ -234,7 +189,7 @@ def btdigg(url, mstr=''):
     else:
         url = 'http://btdigg.org' + url
 
-    rsp = _http(url)
+    rsp = hc.urlopen(url)
     rpat = re.compile(
         r'"idx">.*?>([^<]+)</a>.*?href="(magnet.*?)".*?Size:.*?">(.*?)<')
     items = rpat.findall(rsp)
@@ -257,6 +212,48 @@ def btdigg(url, mstr=''):
                      'path': plugin.url_for('index')})
     return menus
 
+@plugin.route('/torrentz/<url>')
+def torrentz(url):
+    if 'p=' not in url:
+        url = 'http://torrentz.eu/search?f='
+        sel = dialog.select('选择节目类型', ('电影', '电视'))
+        if sel is -1: return
+        typ = 'shows:' if sel else 'movies:'
+        kb = Keyboard('',u'请输入搜索关键字')
+        kb.doModal()
+        if not kb.isConfirmed(): return
+        mstr = kb.getText()
+        if not mstr: return
+        stxt = '%s%s' % (typ, mstr.replace(' ', '+'))
+        url = '%s%s&p=0' % ('http://torrentz.eu/search?f=', urllib2.quote(stxt))
+    rsp = hc.urlopen(url)
+    mitems = re.findall(
+        r'"/([0-9a-z]{40})">(.*?)</a>.*?class="s">([^>]+)<', rsp, re.S)
+
+    menus = [{'label': '%s[%s]' % (re.sub(r'<.*?>', '', i[1]), i[2]),
+              'path': plugin.url_for('playvideo',
+                                     vinfo='magnet:?xt=urn:btih:%s' % i[0])
+              } for i in mitems]
+
+    cnt = re.findall(r'<h2 style="border-bottom: none">([,0-9]+) Torrents', rsp)
+    if cnt:
+        cnt = int(cnt[0].replace(',', ''))
+        pages = (cnt + 49) // 50
+        currpg = int(url.split('=')[-1])
+        urlpre = '='.join(url.split('=')[:-1])
+        if currpg > 0:
+            menus.append({'label': '上一页',
+                          'path': plugin.url_for(
+                              'torrentz', url='%s=%s' % (urlpre, currpg-1))})
+        if (currpg+1) < pages:
+            menus.append({'label': '下一页',
+                          'path': plugin.url_for(
+                              'torrentz', url='%s=%s' % (urlpre, currpg+1))})
+        menus.insert(0, {'label':
+                         '【第%s页/共%s页】返回上级菜单' % (currpg+1, pages),
+                         'path': plugin.url_for('index')})
+    return menus
+
 def addbt(magnetid):
     '''
     GET /req_del_list?flag=0&sessionid=sid&t=cachetime&info_hash=ihash
@@ -266,7 +263,7 @@ def addbt(magnetid):
     data = {"urls":[{"id":0,"url":magnetid}]}
     reqvideo = '%s/req_video_name?from=vlist&platform=0' % urlpre
     rsp = xl.urlopen(reqvideo, data=data)
-    minfo = json.loads(xl.fetch(rsp))
+    minfo = json.loads(rsp)
     acdt = minfo['resp']['res'][0]
     data = {"urls":
             [{'id': acdt['id'], "url": acdt['url'], "name": acdt['name']},]
@@ -275,14 +272,14 @@ def addbt(magnetid):
     addvideo = '{0}/req_add_record?userid={1}&sessionid={2}&{3}'.format(
         urlpre, xl.userid, xl.sid, 'folder_id=0&from=vlist&platform=0')
     rsp = xl.urlopen(addvideo, data=data)
-    acinfo = json.loads(xl.fetch(rsp))
+    acinfo = json.loads(rsp)
     ihash = acinfo['resp']['res'][0]['url'][5:]
     return ihash
 
 @plugin.route('/dbmovie')
 def dbmovie():
     if '类型' not in filters:
-        rsp = _http('http://movie.douban.com/category/')
+        rsp = hc.urlopen('http://movie.douban.com/category/')
         fts = re.findall(
             r'class="label">([^>]+?)</h4>\s+<ul>(.*?)</ul>', rsp, re.S)
         typpatt = re.compile(r'<a href="#">([^>]+?)</a>')
@@ -314,7 +311,7 @@ def dbcate(typ, page):
         typ['era'] = filters['年代'][sel]
     params.update(typ)
     data = urllib.urlencode(params)
-    rsp = _http('http://movie.douban.com/category/q',
+    rsp = hc.urlopen('http://movie.douban.com/category/q',
                 data.replace(urllib2.quote('不限'), ''))
     minfo = json.loads(rsp)
     menus = [{'label': '[%s].%s[%s][%s]' % (m['release_year'], m['title'],
@@ -338,16 +335,16 @@ def dbcate(typ, page):
     )
     return menus
 
-@plugin.route('/dbactor/<sstr>/<page>')
-def dbactor(sstr, page):
-    urlpre = 'http://movie.douban.com/subject_search'
-    if 'none' in sstr:
+@plugin.route('/dbactor/<url>')
+def dbactor(url):
+    if 'search_text' not in url:
+        urlpre = 'http://movie.douban.com/subject_search'
         kb = Keyboard('',u'请输入搜索关键字')
         kb.doModal()
         if not kb.isConfirmed(): return
         sstr = kb.getText()
-    url = '%s/?search_text=%s&start=%s' % (urlpre ,sstr, str(int(page)*15))
-    rsp = _http(url)
+        url = '%s/?search_text=%s&start=0' % (urlpre ,sstr)
+    rsp = hc.urlopen(url)
     rtxt = r'%s%s' % ('tr class="item".*?nbg".*?src="(.*?)" alt="(.*?)"',
                       '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
     patt = re.compile(rtxt, re.S)
@@ -358,21 +355,23 @@ def dbactor(sstr, page):
              'thumbnail': i[0],
          } for s, i in enumerate(mitems)]
 
-    count = re.findall(r'class="count">.*?(\d+).*?</span>', rsp)
-    count = int(count[0])
-    page = int(page)
-    if page>0:
-        menus.append({
-            'label': '上一页',
-            'path': plugin.url_for('dbactor', sstr=sstr, page=page-1)})
-    if (page+1)*15 < count:
-        menus.append({
-            'label': '下一页',
-            'path': plugin.url_for('dbactor', sstr=sstr, page=page+1)})
-
-    menus.insert(0, {
-        'label': '【当前页%s/总共页%s】【放回上级菜单】' % (page+1, (count+14)//15),
-        'path': plugin.url_for('index')})
+    cnt = re.findall(r'class="count">.*?(\d+).*?</span>', rsp)
+    if cnt:
+        cnt = int(cnt[0])
+        pages = (cnt + 14) // 15
+        curpg = int(url.split('=')[-1]) // 15
+        urlpre = '='.join(url.split('=')[:-1])
+        if curpg > 0:
+            menus.append({'label': '上一页',
+                          'path': plugin.url_for(
+                              'dbactor', url='%s=%s' % (urlpre, (curpg-1)*15))})
+        if (curpg+1) < pages:
+            menus.append({'label': '下一页',
+                          'path': plugin.url_for(
+                              'dbactor', url='%s=%s' % (urlpre, (curpg+1)*15))})
+        menus.insert(0, {'label':
+                         '【第%s页/共%s页】返回上级菜单' % (curpg+1, pages),
+                         'path': plugin.url_for('index')})
     return menus
 
 @plugin.route('/dbntop')
@@ -380,7 +379,7 @@ def dbntop():
     '''
     img, title, info, rate
     '''
-    rsp = _http('http://movie.douban.com/chart')
+    rsp = hc.urlopen('http://movie.douban.com/chart')
     mstr = r'%s%s' % ('nbg".*?src="(.*?)" alt="(.*?)"',
                       '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
     mpatt = re.compile(mstr, re.S)
@@ -398,7 +397,7 @@ def dbtop(page):
     '''
     page = int(page)
     pc = page * 25
-    rsp = _http('http://movie.douban.com/top250?start={0}'.format(pc))
+    rsp = hc.urlopen('http://movie.douban.com/top250?start={0}'.format(pc))
     mstr = r'class="item".*?alt="(.*?)" src="(.*?)".*?<p class="">\s+(.*?)</p>'
     mpatt = re.compile(mstr, re.S)
     mitems = mpatt.findall(rsp)
@@ -416,31 +415,55 @@ def dbtop(page):
                       'path': plugin.url_for('dbtop', page=page+1)})
     return menus
 
-def md5(s):
-    import hashlib
-    return hashlib.md5(s).hexdigest().lower()
 
-def _http(url, data=None):
-    """
-    open url
-    """
-    req = urllib2.Request(url)
-    req.add_header('User-Agent', 'Mozilla/5.0 (X11; Linux x86_64) {0}{1}'.
-                   format('AppleWebKit/537.36 (KHTML, like Gecko) ',
-                          'Chrome/28.0.1500.71 Safari/537.36'))
-    req.add_header('Accept-encoding', 'gzip,deflate')
-    if data:
-        rsp = urllib2.urlopen(req, data=data, timeout=30)
-    else:
-        rsp = urllib2.urlopen(req, timeout=30)
-    if rsp.info().get('Content-Encoding') == 'gzip':
-        buf = StringIO(rsp.read())
-        f = gzip.GzipFile(fileobj=buf)
-        data = f.read()
-    else:
-        data = rsp.read()
-    rsp.close()
-    return data
+class HttpClient(object):
+    def __init__(self, cookiefile = None):
+        self.cookiejar = cookielib.LWPCookieJar()
+        if cookiefile and os.path.exists(cookiefile):
+            self.cookiejar.load(
+                cookiefile, ignore_discard=True, ignore_expires=True)
+        self.userid = self.getcookieatt('.xunlei.com', 'userid')
+        self.sid = self.getcookieatt('.xunlei.com', 'sessionid')
+        self.opener = urllib2.build_opener(
+            urllib2.HTTPCookieProcessor(self.cookiejar))
+
+        self.headers = {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) {0}{1}'.format(
+                'AppleWebKit/537.36 (KHTML, like Gecko) ',
+                'Chrome/28.0.1500.71 Safari/537.36'),
+            'Accept-encoding': 'gzip,deflate',
+        }
+
+    def urlopen(self, url, **args):
+        if 'data' in args and type(args['data']) == dict:
+            args['data'] = json.dumps(args['data'])
+            #arg['data'] = urllib.urlencode(args['data'])
+            self.headers['Content-Type'] = 'application/json'
+        rs = self.opener.open(
+            urllib2.Request(url, headers=self.headers, **args), timeout=60)
+        if rs.headers.get('content-encoding', '') == 'gzip':
+            content = gzip.GzipFile(fileobj=StringIO(rs.read())).read()
+        else:
+            content = rs.read()
+        return content
+
+    def getcookieatt(self, domain, attr):
+        if domain in self.cookiejar._cookies and attr in \
+           self.cookiejar._cookies[domain]['/']:
+            return self.cookiejar._cookies[domain]['/'][attr].value
+
+    def md5(self, s):
+        import hashlib
+        return hashlib.md5(s).hexdigest().lower()
+
+dialog = xbmcgui.Dialog()
+ppath = plugin.addon.getAddonInfo('path')
+cookiefile = os.path.join(ppath, 'cookie.dat')
+xl = HttpClient(cookiefile)
+hc = HttpClient()
+urlpre = 'http://i.vod.xunlei.com'
+cachetime = int(time.time()*1000)
+filters = plugin.get_storage('ftcache', TTL=1440)
 
 if __name__ == '__main__':
     plugin.run()
