@@ -2,7 +2,7 @@
 import os
 import sys
 import time
-import urllib
+import urllib2
 import xbmc
 import xbmcgui
 from xbmcswift2 import Plugin
@@ -29,18 +29,33 @@ CTRL_ID_HZLIST = 402
 CTRL_ID_CAPTCHA = 4002
 
 class InputWindow(xbmcgui.WindowXMLDialog):
-    def __init__( self, *args, **kwargs ):
+    def __init__(self, *args, **kwargs):
         self.totalpage = 1
         self.nowpage = 0
         self.words = ''
-        self.inputString = kwargs.get( "default" ) or ""
-        self.heading = kwargs.get( "heading" ) or ""
-        self.captcha = kwargs.get( "captcha" ) or ""
+        self.url = kwargs.get("url")
+        self.inputString = kwargs.get("default") or ""
+        self.heading = kwargs.get("heading") or ""
+        #self.captcha = kwargs.get( "captcha" ) or ""
+        self.captcha, self.verify_key = self.initializeImage()
+        xbmcgui.WindowXMLDialog.__init__(self, *args, **kwargs)
 
-        if(self.captcha==""):
-            self.captcha=DEFAULT_CAPTCHA
-
-        xbmcgui.WindowXMLDialog.__init__( self, *args, **kwargs )
+    def initializeImage(self):
+        try:
+            capimg = os.path.join(pgpath, 'resources', 'images', 'captcha.png')
+            url = '%s=%s' % (self.url, int(time.time()*1000))
+            rsp = urllib2.urlopen(url)
+            cookie = rsp.info()['Set-Cookie']
+            localfile = open(capimg, "wb")
+            localfile.write(rsp.read())
+            rsp.close()
+            localfile.close()
+            print cookie
+            return capimg, cookie
+        except:
+            import sys
+            for line in sys.exc_info():
+                print line
 
     def onInit(self):
         self.setKeyOnKeyboard()
@@ -59,7 +74,7 @@ class InputWindow(xbmcgui.WindowXMLDialog):
                 self.getControl(CTRL_ID_MAYS).setSelected(False)
             self.setKeyOnKeyboard()
         elif controlID == CTRL_ID_IP:#ip
-            diaimg = initializeImage()
+            diaimg, self.verify_key = self.initializeImage()
             img_control = self.getControl(CTRL_ID_CAPTCHA)
             img_control.setImage('')
             img_control.setImage(diaimg)
@@ -168,21 +183,19 @@ class InputWindow(xbmcgui.WindowXMLDialog):
         return self.confirmed
 
     def getText(self):
-        return self.inputString
+        return self.inputString + '||' + self.verify_key
 
-class CaptchaDialog():
-    def __init__( self, default='', heading='' , captcha=''):
+class CaptchaDialog(object):
+    def __init__( self, url, default='', heading=''):
         self.confirmed = False
         self.inputString = default
         self.heading = heading
-        self.captcha = captcha
+        self.url = url
 
     def doModal (self):
-        self.captcha = initializeImage()
-        if not self.captcha: self.captcha = DEFAULT_CAPTCHA
         self.win = InputWindow(
             'Captcha.xml', pgpath, defaultSkin='Default', heading=self.heading,
-            default=self.inputString, captcha=self.captcha)
+            default=self.inputString, url=self.url)
         self.win.doModal()
         self.confirmed = self.win.isConfirmed()
         self.inputString = self.win.getText()
@@ -196,19 +209,3 @@ class CaptchaDialog():
 
     def getText(self):
         return self.inputString
-
-def initializeImage():
-    try:
-        capimg = os.path.join(pgpath, 'resources', 'images', 'captcha.png')
-        url = 'http://verify2.xunlei.com/image?cachetime={0}'.format(
-            int(time.time()*1000))
-        webFile = urllib.urlopen(url)
-        localFile = open(capimg, "wb")
-        localFile.write(webFile.read())
-        webFile.close()
-        localFile.close()
-        return capimg
-    except:
-        import sys
-        for line in sys.exc_info():
-            print line

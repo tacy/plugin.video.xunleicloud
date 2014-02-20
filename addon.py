@@ -8,6 +8,7 @@ import urllib
 import urllib2
 import cookielib
 import captcha
+from random import randint
 from StringIO import StringIO
 from xbmcswift2 import xbmc
 from xbmcswift2 import Plugin
@@ -21,7 +22,8 @@ plugin = Plugin()
 def index():
     item = [
         {'label': '登入迅雷', 'path': plugin.url_for('login')},
-        {'label': '云播空间', 'path': plugin.url_for('dashboard')},
+        {'label': '[迅雷云播] - 云播空间', 'path': plugin.url_for('cloudspace')},
+        {'label': '[迅雷离线] - 离线空间', 'path': plugin.url_for('lxspace', page=1)},
         {'label': '[中文搜索] - BTdigg.org',
          'path': plugin.url_for('btdigg', url='search')},
         {'label': '[英文搜索] - TorrentZ.eu',
@@ -41,47 +43,103 @@ def login():
     passwd = plugin.get_setting('password')
     if not (user and passwd):
         return
-
+    xl = HttpClient()
     check_url = 'http://login.xunlei.com/check?u={0}&cachetime={1}'.format(
         user, cachetime)
-    login_page = xl.urlopen(check_url)
+    xl.urlopen(check_url)
     vfcode = xl.getcookieatt('.xunlei.com', 'check_result')[2:].upper()
 
     if not vfcode:
-        cdg = cyaptcha.CaptchaDialog("","")
-        ccdg.doModal()
-        confirmed = cdg.isConfirmed()
-        if not confirmed:
-            return
-        vfcode = cdg.getText().upper()
-        del cdg
+        vfcode = xl.getvfcode()
+        vfcode = xl.getvfcode('http://verify.xunlei.com/image?cachetime=')
+        if not vfcode: return
 
     if not re.match(r'^[0-9a-f]{32}$', passwd):
         passwd = xl.md5(xl.md5(passwd))
-    passwd = xl.md5(passwd+vfcode)
+    passwd = xl.md5(passwd+vfcode.upper())
 
     data = urllib.urlencode({'u': user, 'p': passwd, 'verifycode': vfcode,
                              'login_enable':'1', 'login_hour':'720',})
 
-    login_page = xl.urlopen('http://login.xunlei.com/sec2login/', data=data)
+    xl.urlopen('http://login.xunlei.com/sec2login/', data=data)
 
     xl.userid = xl.getcookieatt('.xunlei.com', 'userid')
     xl.sid = xl.getcookieatt('.xunlei.com', 'sessionid')
 
-    blogresult = xl.getcookieatt('.xunlei.com', 'blogresult')
-    loginmsgs = [
-        '登入成功', '验证码错误', '密码错误', '用户名不存在', '未知错误'
-    ]
-    plugin.notify(msg=loginmsgs[int(blogresult)])
+    xl.urlopen(
+        'http://dynamic.lixian.vip.xunlei.com/login?cachetime=%d' % cachetime)
+    urlpre = 'http://dynamic.cloud.vip.xunlei.com/interface/showtask_unfresh'
+    rsp = xl.urlopen('%s?t=%s%s' % (urlpre, cachetime, '&type_id=2&tasknum=1'))
+    data = json.loads(rsp[8:-1])
+    gdriveid = data['info']['user']['cookie']
+
+    xl.setcookie('.vip.xunlei.com', 'gdriveid', gdriveid)
+    xl.setcookie('.vip.xunlei.com', 'pagenum', '100')
     xl.cookiejar.save(cookiefile, ignore_discard=True)
+
+    blogresult = xl.getcookieatt('.xunlei.com', 'blogresult')
+    rst = int(blogresult)
+    loginmsgs = ['登入成功', '验证码错误', '密码错误', '用户名不存在']
+    plugin.notify(msg=loginmsgs[rst] if rst<3 else '未知错误')
     #for ck in xl.cookiejar:
     #    print (ck.name, ck.value)
     return
 
-@plugin.route('/playvideo/<vinfo>')
-def playvideo(vinfo):
-    protoc = vinfo[:10]
-    if 'bt' in protoc or 'magnet' in protoc:
+@plugin.route('/cloudspace')
+def cloudspace():
+    dhurl = '%s/%s/?type=all&order=create&t=%s' % (
+        urlpre, 'req_history_play_list/req_num/200/req_offset/0', cachetime)
+    rsp = xl.urlopen(dhurl)
+    vods = json.loads(rsp)['resp']['history_play_list']
+
+    menu = [{'label': urllib2.unquote(v['file_name'].encode('utf-8')),
+             'path': plugin.url_for(
+                 'playcloudvideo',
+                 vinfo=str((v['src_url'], v['gcid'], v['cid'], v['file_name'])))
+             } for v in vods if 'src_url' in v]
+    return menu
+
+@plugin.route('/lxspace/<page>')
+def lxspace(page):
+    '''
+    http://dynamic.cloud.vip.xunlei.com/interface/showtask_unfresh?
+    callback=jsonp1392830614727&t=Thu%20Feb%2020%202014%2001:23:35%
+    20GMT+0800%20(CST)&type_id=4&page=1&tasknum=30&p=1&interfrom=task
+    '''
+    urlpre = 'http://dynamic.cloud.vip.xunlei.com/interface/showtask_unfresh'
+    rsp = xl.urlopen('%s?t=%s&type_id=4&page=%s&tasknum=30&p=1' % (
+        urlpre, cachetime, page))
+    data = json.loads(rsp[8:-1])
+
+    menus = [{'label': '[{0}%][{1}]{2}'.format(i['progress'],
+                                               i['openformat'],
+                                               i['taskname'].encode('utf-8')),
+              'path': plugin.url_for('playlxtid',
+                                     magnet=i['cid'],
+                                     lxurl=i['lixian_url'],
+                                     title=i['taskname'].encode('utf-8'),
+                                     taskid=i['id']),
+              } for i in data['info']['tasks']]
+
+    total = int(data['info']['user']['total_num'])
+    totalpgs = (total+29) // 30
+    page = int(page)
+    if page-1 > 0:
+        menus.append({'label': '上一页',
+                      'path': plugin.url_for('lxspace', page=page-1)})
+    if page < totalpgs:
+        menus.append({'label': '下一页',
+                      'path': plugin.url_for('lxspace', page=page+1)})
+    menus.insert(0, {'label':
+                     '【第%s页/共%s页】返回上级菜单' % (page, totalpgs),
+                     'path': plugin.url_for('index')})
+
+    return menus
+
+@plugin.route('/playcloudvideo/<vinfo>')
+def playcloudvideo(vinfo):
+    protocol = vinfo[:10]
+    if 'bt' in protocol or 'magnet' in protocol:
         if 'magnet' in vinfo:
             ihash = addbt(vinfo)
         else:
@@ -105,7 +163,7 @@ def playvideo(vinfo):
         gcid = video['gcid']
         cid = video['cid']
         title = urllib2.quote(video['name'].encode('utf-8'))
-    elif 'http' in protoc or 'thunder' in protoc or 'ed2k' in protoc:
+    elif 'http' in protocol or 'thunder' in protocol or 'ed2k' in protocol:
         _vinfo = eval(vinfo)
         gcid = _vinfo[1]
         cid = _vinfo[2]
@@ -120,7 +178,7 @@ def playvideo(vinfo):
     vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
 
     if not vtyps:
-        plugin.notify(msg='视频转码未完成，请稍候尝试从云播空间菜单进入播放')
+        plugin.notify(msg='视频转码进行中，请稍候尝试从云播空间菜单进入播放')
         return
     if len(vtyps)>1:
         selitem = dialog.select('清晰度', [v[0] for v in vtyps])
@@ -129,10 +187,78 @@ def playvideo(vinfo):
     else:
         vtyp = vtyps[0]
 
-    movurl = urllib2.urlopen(vtyp[1]).geturl()
-    cks = dict((ck.name, ck.value) for ck in xl.cookiejar)
+    player(vtyp[1], gcid, cid, title)
+
+@plugin.route('/playlxvideo/<magnet>', name='playlxmagnet')
+@plugin.route(
+    '/playlxvideo/<magnet>/<taskid>/<lxurl>/<title>', name='playlxtid')
+def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
+    '''
+    (i['title'], i['size'], i['percent'], i['cid'],
+               re.sub(r'.*?&g=', '', i['downurl'])[:40], i['downurl'])
+    '''
+    urlpre ='http://dynamic.cloud.vip.xunlei.com/interface'
+    if lxurl:
+        cid = magnet
+        gcid= re.sub(r'.*?&g=', '', lxurl)[:40]
+        title = title
+        video = getcloudvideourl(gcid, lxurl, title)
+        player(video[1], gcid, cid, title)
+        return
+    if magnet and len(magnet)>40:
+        tid = gettaskid(magnet)
+        infoid = magnet[-40:]
+    else:
+        infoid = magnet
+        tid = taskid
+    url = '%s/%s&tid=%s&infoid=%s&g_net=1&p=1&uid=%s&noCacheIE=%s' % (
+        urlpre, 'fill_bt_list?callback=fill_bt_list', tid, infoid,
+        xl.userid, cachetime)
+
+    rsp = xl.urlopen(url)
+    if not xl.getcookieatt('dynamic.cloud.vip.xunlei.com', 'PHPSESSID'):
+        xl.cookiejar.save(cookiefile, ignore_discard=True)
+
+    try:
+        data = json.loads(rsp[13:-1])
+    except ValueError:
+        magnets.pop(magnet)
+        plugin.notify('该离线任务已删除,请重新添加')
+        return
+
+    mitems = [
+        (i['title'],
+         i['size'],
+         i['percent'],
+         i['cid'],
+         re.sub(r'.*?&g=', '', i['downurl'])[:40],
+         i['downurl']
+     ) for i in data['Result']['Record']
+        if 'movie' in i['openformat'] and i['percent']==100]
+
+    if not mitems:
+        plugin.notify('离线下载进行中，请稍候从离线空间播放')
+        return
+
+    if len(mitems) > 1:
+        sel = dialog.select(
+            '播放选择',['[%s]%s[%s]' % (i[2], i[0], i[1])
+                        for i in mitems])
+        if sel is -1: return
+        mov = mitems[sel]
+    else:
+        mov = mitems[0]
+
+    (name, _, _, cid, gcid, downurl) = mov
+    video = getcloudvideourl(gcid, downurl, name.encode('utf-8'))
+    player(video[1], gcid, cid, name)
+
+def player(url, gcid, cid, title):
+    rsp = xl.urlopen(url, redirect=False)
+    #cks = dict((ck.name, ck.value) for ck in xl.cookiejar)
+    cks = ['%s=%s' % (ck.name, ck.value) for ck in xl.cookiejar]
     movurl = '%s|%s&Cookie=%s' % (
-        movurl, urllib.urlencode(xl.headers), urllib.urlencode(cks))
+        rsp, urllib.urlencode(xl.headers), urllib2.quote('; '.join(cks)))
 
     #for ck in xl.cookiejar:
     #    print ck.name, ck.value
@@ -144,6 +270,8 @@ def playvideo(vinfo):
     surl = ''
     subtinfo = '{0}/subtitle/list?gcid={1}&cid={2}&userid={3}&t={4}'.format(
         urlpre, gcid, cid, xl.userid, cachetime)
+    subtinfo = '%s|%s&Cookie=%s' % (
+        subtinfo, urllib.urlencode(xl.headers), urllib2.quote('; '.join(cks)))
     subtitle = xl.urlopen(subtinfo)
     sinfos = json.loads(subtitle)
     surls = ''
@@ -156,23 +284,13 @@ def playvideo(vinfo):
             time.sleep(1)
         else:
             raise Exception('No video playing. Aborted after 30 seconds.')
+        xl.headers.pop('Accept-encoding')
         for surl in surls:
-            player.setSubtitles(surl)
+            player.setSubtitles('%s|%s&Cookie=%s' % (
+                surl, urllib.urlencode(xl.headers),
+                urllib2.quote('; '.join(cks))))
+
     #xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
-
-@plugin.route('/dashboard')
-def dashboard():
-    dhurl = '%s/%s/?type=all&order=create&t=%s' % (
-        urlpre, 'req_history_play_list/req_num/200/req_offset/0', cachetime)
-    rsp = xl.urlopen(dhurl)
-    vods = json.loads(rsp)['resp']['history_play_list']
-
-    menu = [{'label': urllib2.unquote(v['file_name'].encode('utf-8')),
-             'path': plugin.url_for(
-                 'playvideo',
-                 vinfo=str((v['src_url'], v['gcid'], v['cid'], v['file_name'])))
-             } for v in vods if 'src_url' in v]
-    return menu
 
 @plugin.route('/btdigg/<url>')
 @plugin.route('/btdigg/<url>/<mstr>', name='btsearch')
@@ -196,7 +314,7 @@ def btdigg(url, mstr=''):
 
     menus = [
         {'label': '%d.%s[%s]' % (s+1, v[0], v[2].replace('&nbsp;', '')),
-         'path': plugin.url_for('playvideo', vinfo=v[1])}
+         'path': plugin.url_for('playlxmagnet', magnet=v[1])}
         for s, v in enumerate(items)]
     ppat = re.compile(r'%s%s' % (
         'class="pager".*?(?:href="(/search.*?)")?>←.*?>',
@@ -231,8 +349,8 @@ def torrentz(url):
         r'"/([0-9a-z]{40})">(.*?)</a>.*?class="s">([^>]+)<', rsp, re.S)
 
     menus = [{'label': '%s[%s]' % (re.sub(r'<.*?>', '', i[1]), i[2]),
-              'path': plugin.url_for('playvideo',
-                                     vinfo='magnet:?xt=urn:btih:%s' % i[0])
+              'path': plugin.url_for('playlxmagnet',
+                                     magnet='magnet:?xt=urn:btih:%s' % i[0])
               } for i in mitems]
 
     cnt = re.findall(r'<h2 style="border-bottom: none">([,0-9]+) Torrents', rsp)
@@ -275,6 +393,64 @@ def addbt(magnetid):
     acinfo = json.loads(rsp)
     ihash = acinfo['resp']['res'][0]['url'][5:]
     return ihash
+
+def gettaskid(magnet):
+    '''
+    http://verify.xunlei.com/image?t=MVA&cachetime=1392381968052
+    '''
+    urlpre ='http://dynamic.cloud.vip.xunlei.com/interface'
+    if magnet not in magnets:
+        url = '%s/url_query?callback=queryUrl&u=%s&random=%s&tcache=%s' % (
+            urlpre, urllib2.quote(magnet), random, cachetime)
+        print url
+        rsp = xl.urlopen(url)
+        success = re.search(r'queryUrl(\(1,.*\))\s*$', rsp, re.S)
+        if not success:
+            already_exists = re.search(r"queryUrl\(-1,'([^']{40})", rsp, re.S)
+            if already_exists:
+                return already_exists.group(1)
+            raise NotImplementedError(repr(rsp))
+        args = success.group(1).decode('utf-8')
+        args = eval(args.replace('new Array', ''))
+        _, cid, tsize, btname, _, names, sizes_, sizes, _, types, \
+            findexes, timestamp, _ = args
+        def toList(x):
+            if type(x) in (list, tuple):
+                return x
+            else:
+                return [x]
+        data = {'uid':xl.userid, 'btname':btname, 'cid':cid, 'tsize':tsize,
+                'findex':''.join(x+'_' for x in toList(findexes)),
+                'size':''.join(x+'_' for x in toList(sizes)),
+                'from':'0'}
+        jsonp = 'jsonp%s' % cachetime
+        commiturl = '%s/bt_task_commit?callback=%s' % (urlpre, jsonp)
+        rsp = xl.urlopen(commiturl, data=urllib.urlencode(data))
+        while '"progress":-11' in rsp or '"progress":-12' in rsp:
+            vfcode = xl.getvfcode(
+                'http://verify2.xunlei.com/image?t=MVA&cachetime')
+            if not vfcode: return
+            data['verify_code'] = vfcode
+            rsp = xl.urlopen(commiturl, data=urllib.urlencode(data))
+        tids = re.findall(r'"id":"(\d+)"', rsp)
+        if not tids: return
+        magnets[magnet] = tids[0]
+    tid = magnets[magnet]
+    return tid
+
+def getcloudvideourl(gcid, surl, title):
+    dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
+        'http://i.vod.xunlei.com', xl.userid, gcid,
+        urllib2.quote(title), cachetime)
+    rsp = xl.urlopen(dl)
+    vturls = json.loads(rsp)
+    typ = {'Full_HD':'1080P', 'HD':'720P', 'SD':'标清'}
+    vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
+    vtyps.insert(0, ('源码', surl))
+    selitem = dialog.select('清晰度', [v[0] for v in vtyps])
+    if selitem is -1: return
+    vtyp = vtyps[selitem]
+    return vtyp
 
 @plugin.route('/dbmovie')
 def dbmovie():
@@ -428,19 +604,32 @@ class HttpClient(object):
             urllib2.HTTPCookieProcessor(self.cookiejar))
 
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) {0}{1}'.format(
-                'AppleWebKit/537.36 (KHTML, like Gecko) ',
-                'Chrome/28.0.1500.71 Safari/537.36'),
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/28.0.1500.71 Safari/537.36',
             'Accept-encoding': 'gzip,deflate',
         }
 
-    def urlopen(self, url, **args):
+    class SmartRedirectHandler(urllib2.HTTPRedirectHandler):
+        def http_error_302(self, req, fp, code, msg, headers):
+            infourl = urllib.addinfourl(fp, headers, req.get_full_url())
+            infourl.status = code
+            infourl.code = code
+            return infourl
+        http_error_301 = http_error_303 = http_error_307 = http_error_302
+
+    def urlopen(self, url, redirect=True, **args):
         if 'data' in args and type(args['data']) == dict:
             args['data'] = json.dumps(args['data'])
             #arg['data'] = urllib.urlencode(args['data'])
             self.headers['Content-Type'] = 'application/json'
+        if not redirect:
+            self.opener = urllib2.build_opener(
+                self.SmartRedirectHandler(),
+                urllib2.HTTPCookieProcessor(self.cookiejar))
         rs = self.opener.open(
-            urllib2.Request(url, headers=self.headers, **args), timeout=60)
+            urllib2.Request(url, headers=self.headers, **args), timeout=30)
+        if 'Location' in rs.headers:
+            return rs.headers.get('Location', '')
         if rs.headers.get('content-encoding', '') == 'gzip':
             content = gzip.GzipFile(fileobj=StringIO(rs.read())).read()
         else:
@@ -451,6 +640,28 @@ class HttpClient(object):
         if domain in self.cookiejar._cookies and attr in \
            self.cookiejar._cookies[domain]['/']:
             return self.cookiejar._cookies[domain]['/'][attr].value
+
+    def getvfcode(self, url):
+        cdg = captcha.CaptchaDialog(url)
+        cdg.doModal()
+        confirmed = cdg.isConfirmed()
+        if not confirmed:
+            return
+        info = cdg.getText()
+        #del cdg
+        vfcode, vfcookie = info.split('||')
+        k, v = vfcookie.split('; ')[0].split('=')
+        self.setcookie('.xunlei.com', k, v)
+        return vfcode
+
+    def setcookie(self, domain, k, v):
+        c = cookielib.Cookie(
+            version=0, name=k, value=v, comment_url=None, port_specified=False,
+            domain=domain, domain_specified=True, path='/', secure=False,
+            domain_initial_dot=True, path_specified=True, expires=None,
+            discard=True, comment=None, port=None, rest={}, rfc2109=False)
+        self.cookiejar.set_cookie(c)
+        self.cookiejar.save(cookiefile, ignore_discard=True)
 
     def md5(self, s):
         import hashlib
@@ -463,7 +674,10 @@ xl = HttpClient(cookiefile)
 hc = HttpClient()
 urlpre = 'http://i.vod.xunlei.com'
 cachetime = int(time.time()*1000)
+random = '%s%06d.%s' % (cachetime, randint(0, 999999),
+                        randint(100000000, 9999999999))
 filters = plugin.get_storage('ftcache', TTL=1440)
+magnets = plugin.get_storage('ftcache')
 
 if __name__ == '__main__':
     plugin.run()
