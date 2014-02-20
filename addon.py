@@ -198,7 +198,7 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
                re.sub(r'.*?&g=', '', i['downurl'])[:40], i['downurl'])
     '''
     urlpre ='http://dynamic.cloud.vip.xunlei.com/interface'
-    if len(lxurl) > 2:
+    if lxurl and len(lxurl) > 2:
         cid = magnet
         gcid= re.sub(r'.*?&g=', '', lxurl)[:40]
         title = title
