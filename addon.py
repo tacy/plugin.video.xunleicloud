@@ -114,11 +114,12 @@ def lxspace(page):
     menus = [{'label': '[{0}%][{1}]{2}'.format(i['progress'],
                                                i['openformat'],
                                                i['taskname'].encode('utf-8')),
-              'path': plugin.url_for('playlxtid',
-                                     magnet=i['cid'],
-                                     lxurl=i['lixian_url'],
-                                     title=i['taskname'].encode('utf-8'),
-                                     taskid=i['id']),
+              'path': plugin.url_for(
+                  'playlxtid',
+                  magnet=i['cid'],
+                  lxurl=i['lixian_url'] if i['lixian_url'] else 'bt',
+                  title=i['taskname'].encode('utf-8'),
+                  taskid=i['id']),
               } for i in data['info']['tasks']]
 
     total = int(data['info']['user']['total_num'])
@@ -190,19 +191,19 @@ def playcloudvideo(vinfo):
     player(vtyp[1], gcid, cid, title)
 
 @plugin.route('/playlxvideo/<magnet>', name='playlxmagnet')
-@plugin.route(
-    '/playlxvideo/<magnet>/<taskid>/<lxurl>/<title>', name='playlxtid')
+@plugin.route('/playlxvideo/<magnet>/<taskid>/<lxurl>/<title>', name='playlxtid')
 def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
     '''
     (i['title'], i['size'], i['percent'], i['cid'],
                re.sub(r'.*?&g=', '', i['downurl'])[:40], i['downurl'])
     '''
     urlpre ='http://dynamic.cloud.vip.xunlei.com/interface'
-    if lxurl:
+    if len(lxurl) > 2:
         cid = magnet
         gcid= re.sub(r'.*?&g=', '', lxurl)[:40]
         title = title
         video = getcloudvideourl(gcid, lxurl, title)
+        if not video: return
         player(video[1], gcid, cid, title)
         return
     if magnet and len(magnet)>40:
@@ -251,6 +252,7 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
 
     (name, _, _, cid, gcid, downurl) = mov
     video = getcloudvideourl(gcid, downurl, name.encode('utf-8'))
+    if not video: return
     player(video[1], gcid, cid, name)
 
 def player(url, gcid, cid, title):
@@ -402,7 +404,7 @@ def gettaskid(magnet):
     if magnet not in magnets:
         url = '%s/url_query?callback=queryUrl&u=%s&random=%s&tcache=%s' % (
             urlpre, urllib2.quote(magnet), random, cachetime)
-        print url
+
         rsp = xl.urlopen(url)
         success = re.search(r'queryUrl(\(1,.*\))\s*$', rsp, re.S)
         if not success:
