@@ -21,19 +21,26 @@ plugin = Plugin()
 @plugin.route('/')
 def index():
     item = [
-        {'label': '登入迅雷', 'path': plugin.url_for('login')},
-        {'label': '[迅雷云播] - 云播空间', 'path': plugin.url_for('cloudspace')},
-        {'label': '[迅雷离线] - 离线空间', 'path': plugin.url_for('lxspace', page=1)},
+        {'label': '[登入迅雷] - 白金用户',
+         'path': plugin.url_for('login')},
+        {'label': '[迅雷云播] - 云播空间',
+         'path': plugin.url_for('cloudspace')},
+        {'label': '[迅雷离线] - 离线空间',
+         'path': plugin.url_for('lxspace', page=1)},
         {'label': '[中文搜索] - BTdigg.org',
          'path': plugin.url_for('btdigg', url='search')},
         {'label': '[英文搜索] - TorrentZ.eu',
          'path': plugin.url_for('torrentz', url='search')},
-        {'label': '[豆瓣电影] - 分类浏览', 'path': plugin.url_for('dbmovie')},
-        {'label': '[豆瓣影人] - 影人作品搜索', 'path':
-         plugin.url_for('dbactor', url='search')},
-        {'label': '[豆瓣新片] - TOP10', 'path': plugin.url_for('dbntop')},
-        {'label': '[豆瓣电影] - TOP250', 'path': plugin.url_for('dbtop', page=0)},
+        {'label': '[豆瓣电影] - 分类浏览',
+         'path': plugin.url_for('dbmovie')},
+        {'label': '[豆瓣影人] - 影人作品搜索',
+         'path': plugin.url_for('dbactor', url='search')},
+        {'label': '[豆瓣新片] - TOP10',
+         'path': plugin.url_for('dbntop')},
+        {'label': '[豆瓣电影] - TOP250',
+         'path': plugin.url_for('dbtop', page=0)},
     ]
+
     return item
 
 @plugin.route('/login')
@@ -44,22 +51,28 @@ def login():
     if not (user and passwd):
         return
     xl = HttpClient()
-    check_url = 'http://login.xunlei.com/check?u={0}&cachetime={1}'.format(
+    vfcodeurl = 'http://login.xunlei.com/check?u={0}&cachetime={1}'.format(
         user, cachetime)
-    xl.urlopen(check_url)
-    vfcode = xl.getcookieatt('.xunlei.com', 'check_result')[2:].upper()
+    xl.urlopen(vfcodeurl)
+    vfcode = xl.getcookieatt('.xunlei.com', 'check_result')[2:]
 
     if not vfcode:
-        vfcode = xl.getvfcode()
         vfcode = xl.getvfcode('http://verify.xunlei.com/image?cachetime=')
-        if not vfcode: return
+        if not vfcode:
+            return
 
     if not re.match(r'^[0-9a-f]{32}$', passwd):
         passwd = xl.md5(xl.md5(passwd))
+
     passwd = xl.md5(passwd+vfcode.upper())
 
-    data = urllib.urlencode({'u': user, 'p': passwd, 'verifycode': vfcode,
-                             'login_enable':'1', 'login_hour':'720',})
+    data = urllib.urlencode(
+        {'u': user,
+         'p': passwd,
+         'verifycode': vfcode,
+         'login_enable': '1',
+         'login_hour': '720',}
+    )
 
     xl.urlopen('http://login.xunlei.com/sec2login/', data=data)
 
@@ -67,9 +80,9 @@ def login():
     xl.sid = xl.getcookieatt('.xunlei.com', 'sessionid')
 
     xl.urlopen(
-        'http://dynamic.lixian.vip.xunlei.com/login?cachetime=%d' % cachetime)
+        'http://dynamic.lixian.vip.xunlei.com/login?cachetime=%s' % cachetime)
     urlpre = 'http://dynamic.cloud.vip.xunlei.com/interface/showtask_unfresh'
-    rsp = xl.urlopen('%s?t=%s%s' % (urlpre, cachetime, '&type_id=2&tasknum=1'))
+    rsp = xl.urlopen('%s?type_id=2&tasknum=1&t=%s' % (urlpre, cachetime))
     data = json.loads(rsp[8:-1])
     gdriveid = data['info']['user']['cookie']
 
@@ -93,9 +106,8 @@ def cloudspace():
     vods = json.loads(rsp)['resp']['history_play_list']
 
     menu = [{'label': urllib2.unquote(v['file_name'].encode('utf-8')),
-             'path': plugin.url_for(
-                 'playcloudvideo',
-                 vinfo=str((v['src_url'], v['gcid'], v['cid'], v['file_name'])))
+             'path': plugin.url_for('playcloudvideo', vinfo=str((
+                 v['src_url'], v['gcid'], v['cid'], v['file_name'])))
              } for v in vods if 'src_url' in v]
     return menu
 
@@ -131,10 +143,8 @@ def lxspace(page):
     if page < totalpgs:
         menus.append({'label': '下一页',
                       'path': plugin.url_for('lxspace', page=page+1)})
-    menus.insert(0, {'label':
-                     '【第%s页/共%s页】返回上级菜单' % (page, totalpgs),
+    menus.insert(0, {'label': '【第%s页/共%s页】返回上级菜单' % (page, totalpgs),
                      'path': plugin.url_for('index')})
-
     return menus
 
 @plugin.route('/playcloudvideo/<vinfo>')
@@ -153,10 +163,9 @@ def playcloudvideo(vinfo):
         vfinfo = json.loads(rsp)
         videos = vfinfo['resp']['subfile_list']
         if len(videos) > 1:
-            selitem = dialog.select(
-                '播放选择',
-                [urllib2.unquote(v['name'].encode('utf-8')) for v in videos]
-            )
+            selitem = dialog.select('播放选择',
+                                    [urllib2.unquote(v['name'].encode('utf-8'))
+                                     for v in videos])
             if selitem is -1: return
             video = videos[selitem]
         else:
@@ -191,7 +200,8 @@ def playcloudvideo(vinfo):
     player(vtyp[1], gcid, cid, title)
 
 @plugin.route('/playlxvideo/<magnet>', name='playlxmagnet')
-@plugin.route('/playlxvideo/<magnet>/<taskid>/<lxurl>/<title>', name='playlxtid')
+@plugin.route('/playlxvideo/<magnet>/<taskid>/<lxurl>/<title>',
+              name='playlxtid')
 def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
     '''
     (i['title'], i['size'], i['percent'], i['cid'],
@@ -344,8 +354,10 @@ def torrentz(url):
         if not kb.isConfirmed(): return
         mstr = kb.getText()
         if not mstr: return
-        stxt = '%s%s' % (typ, mstr.replace(' ', '+'))
-        url = '%s%s&p=0' % ('http://torrentz.eu/search?f=', urllib2.quote(stxt))
+        #stxt = '%s%s' % (typ, mstr.replace(' ', '+'))
+        url = '%s%s%s&p=0' % (
+            'https://torrentz.eu/search?f=', typ, urllib.quote_plus(mstr))
+    print url
     rsp = hc.urlopen(url)
     mitems = re.findall(
         r'"/([0-9a-z]{40})">(.*?)</a>.*?class="s">([^>]+)<', rsp, re.S)
