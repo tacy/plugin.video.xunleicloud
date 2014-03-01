@@ -208,6 +208,27 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
                re.sub(r'.*?&g=', '', i['downurl'])[:40], i['downurl'])
     '''
     urlpre ='http://dynamic.cloud.vip.xunlei.com/interface'
+    if taskid:
+        sel = dialog.select('选项', ['播放', '删除'])
+        if sel is -1:
+            return
+        if sel is 0:
+            pass
+        if sel is 1:
+            data = {'taskids': taskid+',', 'databases': '0,'}
+            print data
+            url = '%s/task_delete?callback=jsonp%s&t=%s' % (
+                urlpre, cachetime, cachetime)
+            rsp = xl.urlopen(url, data=urllib.urlencode(data))
+            if 'result":1' in rsp:
+                plugin.notify(msg='删除任务成功')
+                from itertools import imap
+                imap(lambda x: magnets.pop(x),
+                     [k for k, v in magnets.iteritems() if taskid in v])
+            else:
+                plugin.notify(msg='删除任务失败,请稍候重试')
+            return
+
     if lxurl and len(lxurl) > 2:
         cid = magnet
         gcid= re.sub(r'.*?&g=', '', lxurl)[:40]
