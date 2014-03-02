@@ -523,8 +523,9 @@ def dbcate(typ, page):
     params.update(typ)
     data = urllib.urlencode(params)
     rsp = hc.urlopen('http://movie.douban.com/category/q',
-                data.replace(urllib2.quote('不限'), ''))
+                data=data.replace(urllib2.quote('不限'), ''))
     minfo = json.loads(rsp)
+    print minfo
     menus = [{'label': '[%s].%s[%s][%s]' % (m['release_year'], m['title'],
                                            m['rate'], m['abstract']),
               'path': plugin.url_for(
