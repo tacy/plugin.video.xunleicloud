@@ -31,11 +31,11 @@ def index():
          'path': plugin.url_for('btdigg', url='search')},
         {'label': '[英文搜索] - TorrentZ.eu',
          'path': plugin.url_for('torrentz', url='search')},
+        {'label': '[豆瓣电影] - 电影搜索(支持标签)',
+         'path': plugin.url_for('dbsearch', url='search')},
         {'label': '[豆瓣电影] - 分类浏览',
          'path': plugin.url_for('dbmovie')},
-        {'label': '[豆瓣影人] - 影人作品搜索',
-         'path': plugin.url_for('dbactor', url='search')},
-        {'label': '[豆瓣新片] - TOP10',
+        {'label': '[豆瓣电影] - 新片榜',
          'path': plugin.url_for('dbntop')},
         {'label': '[豆瓣电影] - TOP250',
          'path': plugin.url_for('dbtop', page=0)},
@@ -250,7 +250,6 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
     rsp = xl.urlopen(url)
     if not xl.getcookieatt('dynamic.cloud.vip.xunlei.com', 'PHPSESSID'):
         xl.cookiejar.save(cookiefile, ignore_discard=True)
-
     try:
         data = json.loads(rsp[13:-1])
     except ValueError:
@@ -326,17 +325,17 @@ def player(url, gcid, cid, title):
     #xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
 
 @plugin.route('/btdigg/<url>')
-@plugin.route('/btdigg/<url>/<mstr>', name='btsearch')
-def btdigg(url, mstr=''):
-    if url in 'search':
+@plugin.route('/btdigg/<url>/<mname>', name='btsearch')
+def btdigg(url, mname=''):
+    if url == 'search':
         url = 'http://btdigg.org/search?q='
-        if not mstr:
+        if not nmame:
             kb = Keyboard('',u'请输入搜索关键字')
             kb.doModal()
             if not kb.isConfirmed(): return
-            mstr = kb.getText()
-            if not mstr: return
-        url = url + urllib2.quote(mstr)
+            mname = kb.getText()
+            if not mname: return
+        url = url + urllib2.quote(mname)
     else:
         url = 'http://btdigg.org' + url
 
@@ -364,21 +363,21 @@ def btdigg(url, mstr=''):
     return menus
 
 @plugin.route('/torrentz/<url>')
-def torrentz(url):
-    if 'p=' not in url:
+def torrentz(url, mname=''):
+    if url == 'search':
         url = 'http://torrentz.eu/search?f='
         sel = dialog.select('选择节目类型', ('电影', '电视'))
         if sel is -1: return
         typ = 'shows:' if sel else 'movies:'
-        kb = Keyboard('',u'请输入搜索关键字')
-        kb.doModal()
-        if not kb.isConfirmed(): return
-        mstr = kb.getText()
-        if not mstr: return
+        if not mname:
+            kb = Keyboard('',u'请输入搜索关键字')
+            kb.doModal()
+            if not kb.isConfirmed(): return
+            mname = kb.getText()
         #stxt = '%s%s' % (typ, mstr.replace(' ', '+'))
         url = '%s%s%s&p=0' % (
-            'https://torrentz.eu/search?f=', typ, urllib.quote_plus(mstr))
-    print url
+            'https://torrentz.eu/search?f=', typ, urllib.quote_plus(mname))
+
     rsp = hc.urlopen(url)
     mitems = re.findall(
         r'"/([0-9a-z]{40})">(.*?)</a>.*?class="s">([^>]+)<', rsp, re.S)
@@ -502,7 +501,7 @@ def dbmovie():
     typs = filters['类型']
     menus = [{'label': t,
               'path': plugin.url_for(
-                  'dbcate', typ=str({'types[]':t,}), page=1),
+                  'dbcate', typ=str({'types[]': t}), page=1),
               } for t in typs]
     return menus
 
@@ -525,12 +524,12 @@ def dbcate(typ, page):
     rsp = hc.urlopen('http://movie.douban.com/category/q',
                 data=data.replace(urllib2.quote('不限'), ''))
     minfo = json.loads(rsp)
-    print minfo
+
     menus = [{'label': '[%s].%s[%s][%s]' % (m['release_year'], m['title'],
                                            m['rate'], m['abstract']),
               'path': plugin.url_for(
                   'btsearch', url='search',
-                  mstr=m['title'].split(' ')[0].encode('utf-8')),
+                  mname=m['title'].split(' ')[0].encode('utf-8')),
               'thumbnail': m['poster'],
               } for m in minfo['subjects']]
     if not menus: return
@@ -547,43 +546,59 @@ def dbcate(typ, page):
     )
     return menus
 
-@plugin.route('/dbactor/<url>')
-def dbactor(url):
-    if 'search_text' not in url:
-        urlpre = 'http://movie.douban.com/subject_search'
+@plugin.route('/dbsearch/<url>')
+def dbsearch(url):
+    if url == 'search':
+        urlpre = 'https://api.douban.com/v2/movie/search?tag='
         kb = Keyboard('',u'请输入搜索关键字')
         kb.doModal()
         if not kb.isConfirmed(): return
         sstr = kb.getText()
-        url = '%s/?search_text=%s&start=0' % (urlpre ,sstr)
+        url = '%s%s&start=0' % (urlpre ,sstr)
     rsp = hc.urlopen(url)
-    rtxt = r'%s%s' % ('tr class="item".*?nbg".*?src="(.*?)" alt="(.*?)"',
-                      '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
-    patt = re.compile(rtxt, re.S)
-    mitems = patt.findall(rsp)
-    if not mitems: return
-    menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[1], i[3], i[2]),
-             'path': plugin.url_for('btsearch', url='search', mstr=i[1]),
-             'thumbnail': i[0],
-         } for s, i in enumerate(mitems)]
+    #rtxt = r'%s%s' % ('tr class="item".*?nbg".*?src="(.*?)" alt="(.*?)"',
+    #                  '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
+    #patt = re.compile(rtxt, re.S)
+    #mitems = patt.findall(rsp)
+    data = json.loads(rsp)
+    movs = data['subjects']
+    if not movs: return
+    menus = [{
+        'label': '{0}.{1}[{2}年][{3}分][{4}人收藏]'.format(
+            s, m['title'].encode('utf-8'), m['year'], m['rating']['average'],
+            m['collect_count']
+        ),
+        'path': plugin.url_for(
+            'searchdisp',
+            mname = str((m['title'].encode('utf-8'),
+                           m['original_title'].encode('utf-8')))
+        ),
+        'thumbnail': m['images']['large'],
+    } for s, m in enumerate(movs)]
 
-    cnt = re.findall(r'class="count">.*?(\d+).*?</span>', rsp)
-    if cnt:
-        cnt = int(cnt[0])
-        pages = (cnt + 14) // 15
-        curpg = int(url.split('=')[-1]) // 15
-        urlpre = '='.join(url.split('=')[:-1])
-        if curpg > 0:
-            menus.append({'label': '上一页',
-                          'path': plugin.url_for(
-                              'dbactor', url='%s=%s' % (urlpre, (curpg-1)*15))})
-        if (curpg+1) < pages:
-            menus.append({'label': '下一页',
-                          'path': plugin.url_for(
-                              'dbactor', url='%s=%s' % (urlpre, (curpg+1)*15))})
-        menus.insert(0, {'label':
-                         '【第%s页/共%s页】返回上级菜单' % (curpg+1, pages),
-                         'path': plugin.url_for('index')})
+    #cnt = re.findall(r'class="count">.*?(\d+).*?</span>', rsp)
+    start = data['start']
+    if start != 0:
+        menus.append({'label': '上一页',
+                      'path': plugin.url_for('dbsearch', url='%s%s' % (
+                          '='.join(url.split('=')[:-1]), start-20))})
+    menus.append({'label': '下一页',
+                  'path': plugin.url_for('dbsearch', url='%s%s' % (
+                      '='.join(url.split('=')[:-1]), start+20))})
+    menus.insert(0, {'label':'【当前%s页】返回上级菜单' % str(start/20),
+                     'path': plugin.url_for('index')})
+    return menus
+
+@plugin.route('/searchdisp/<mname>')
+def searchdisp(mname):
+    _mname = eval(mname)
+    sel = dialog.select('选择搜索引擎', ('BTdigg(中文)', 'TorrentZ(英文)'))
+    if sel is -1:
+        return
+    if sel is 0:
+        menus = btdigg('search', mname=_mname[0])
+    else:
+        menus = torrentz('search', mname=_mname[1])
     return menus
 
 @plugin.route('/dbntop')
@@ -597,7 +612,7 @@ def dbntop():
     mpatt = re.compile(mstr, re.S)
     mitems = mpatt.findall(rsp)
     menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[1], i[3], i[2]),
-             'path': plugin.url_for('btsearch', url='search', mstr=i[1]),
+             'path': plugin.url_for('btsearch', url='search', mname=i[1]),
              'thumbnail': i[0],
          } for s, i in enumerate(mitems)]
     return menus
@@ -616,7 +631,7 @@ def dbtop(page):
     menus = [{'label': '{0}. {1}[{2}]'.format(s+pc+1, i[0], ''.join(
         i[2].replace('&nbsp;', ' ').replace('<br>', ' ').replace(
             '\n', ' ').split(' '))),
-              'path': plugin.url_for('btsearch', url='search', mstr=i[0]),
+              'path': plugin.url_for('btsearch', url='search', mname=i[0]),
               'thumbnail': i[1],
          } for s, i in enumerate(mitems)]
     if  page != 0:
