@@ -31,14 +31,14 @@ def index():
          'path': plugin.url_for('btdigg', url='search')},
         {'label': '[英文搜索] - TorrentZ.eu',
          'path': plugin.url_for('torrentz', url='search')},
-        {'label': '[豆瓣电影] - 电影搜索(支持标签)',
+        {'label': '[豆瓣电影] - 标签搜索',
          'path': plugin.url_for('dbsearch', url='search')},
         {'label': '[豆瓣电影] - 分类浏览',
          'path': plugin.url_for('dbmovie')},
         {'label': '[豆瓣电影] - 新片榜',
          'path': plugin.url_for('dbntop')},
         {'label': '[豆瓣电影] - TOP250',
-         'path': plugin.url_for('dbtop', page=0)},
+         'path': plugin.url_for('dbtop250', url='dbtop250')},
     ]
 
     return item
@@ -325,11 +325,10 @@ def player(url, gcid, cid, title):
     #xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
 
 @plugin.route('/btdigg/<url>')
-@plugin.route('/btdigg/<url>/<mname>', name='btsearch')
 def btdigg(url, mname=''):
     if url == 'search':
         url = 'http://btdigg.org/search?q='
-        if not nmame:
+        if not mname:
             kb = Keyboard('',u'请输入搜索关键字')
             kb.doModal()
             if not kb.isConfirmed(): return
@@ -528,8 +527,8 @@ def dbcate(typ, page):
     menus = [{'label': '[%s].%s[%s][%s]' % (m['release_year'], m['title'],
                                            m['rate'], m['abstract']),
               'path': plugin.url_for(
-                  'btsearch', url='search',
-                  mname=m['title'].split(' ')[0].encode('utf-8')),
+                  'searchdisp',
+                  mname='%s/subject/%s' % (dbapi, m['url'].split('/')[-2])),
               'thumbnail': m['poster'],
               } for m in minfo['subjects']]
     if not menus: return
@@ -546,20 +545,39 @@ def dbcate(typ, page):
     )
     return menus
 
-@plugin.route('/dbsearch/<url>')
-def dbsearch(url):
+@plugin.route('/dbntop')
+def dbntop():
+    '''
+    img, title, info, rate
+    '''
+    rsp = hc.urlopen('http://movie.douban.com/chart')
+    mstr = r'%s%s' % ('nbg".*?(subject/\d+).*?src="(.*?)" alt="(.*?)"',
+                      '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
+    mpatt = re.compile(mstr, re.S)
+    mitems = mpatt.findall(rsp)
+
+    menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[2], i[4], i[3]),
+              'path': plugin.url_for(
+                  'searchdisp',
+                  mname='%s/%s' % (dbapi,i[0])),
+              'thumbnail': i[1],
+         } for s, i in enumerate(mitems)]
+    return menus
+
+@plugin.route('/dbscraper/<url>', name='dbsearch')
+@plugin.route('/dbscraper/<url>', name='dbtop250')
+def dbscraper(url):
+    print url
     if url == 'search':
-        urlpre = 'https://api.douban.com/v2/movie/search?tag='
         kb = Keyboard('',u'请输入搜索关键字')
         kb.doModal()
         if not kb.isConfirmed(): return
         sstr = kb.getText()
-        url = '%s%s&start=0' % (urlpre ,sstr)
+        url = '%s/search?tag=%s&start=0' % (dbapi, sstr)
+    if url == 'dbtop250':
+        url = '%s/top250?count=20&start=0' % dbapi
+    view = 'dbsearch' if 'search' in url else 'dbtop250'
     rsp = hc.urlopen(url)
-    #rtxt = r'%s%s' % ('tr class="item".*?nbg".*?src="(.*?)" alt="(.*?)"',
-    #                  '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
-    #patt = re.compile(rtxt, re.S)
-    #mitems = patt.findall(rsp)
     data = json.loads(rsp)
     movs = data['subjects']
     if not movs: return
@@ -576,22 +594,30 @@ def dbsearch(url):
         'thumbnail': m['images']['large'],
     } for s, m in enumerate(movs)]
 
-    #cnt = re.findall(r'class="count">.*?(\d+).*?</span>', rsp)
     start = data['start']
+    urlpre = '='.join(url.split('=')[:-1])
+    print urlpre, start, type(start)
     if start != 0:
         menus.append({'label': '上一页',
-                      'path': plugin.url_for('dbsearch', url='%s%s' % (
-                          '='.join(url.split('=')[:-1]), start-20))})
+                      'path': plugin.url_for(
+                          view, url='%s=%s' % (urlpre, start-20))})
     menus.append({'label': '下一页',
-                  'path': plugin.url_for('dbsearch', url='%s%s' % (
-                      '='.join(url.split('=')[:-1]), start+20))})
-    menus.insert(0, {'label':'【当前%s页】返回上级菜单' % str(start/20),
+                  'path': plugin.url_for(
+                      view, url='%s=%s' % (urlpre, start+20))})
+    menus.insert(0, {'label':'【当前%s页】返回上级菜单' % str(start//20 + 1),
                      'path': plugin.url_for('index')})
     return menus
 
 @plugin.route('/searchdisp/<mname>')
 def searchdisp(mname):
-    _mname = eval(mname)
+    print mname
+    if 'http' in mname:
+        rsp = hc.urlopen(mname)
+        data = json.loads(rsp)
+        _mname = (data['title'].encode('utf-8'),
+                     data['original_title'].encode('utf-8'))
+    else:
+        _mname = eval(mname)
     sel = dialog.select('选择搜索引擎', ('BTdigg(中文)', 'TorrentZ(英文)'))
     if sel is -1:
         return
@@ -600,48 +626,6 @@ def searchdisp(mname):
     else:
         menus = torrentz('search', mname=_mname[1])
     return menus
-
-@plugin.route('/dbntop')
-def dbntop():
-    '''
-    img, title, info, rate
-    '''
-    rsp = hc.urlopen('http://movie.douban.com/chart')
-    mstr = r'%s%s' % ('nbg".*?src="(.*?)" alt="(.*?)"',
-                      '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
-    mpatt = re.compile(mstr, re.S)
-    mitems = mpatt.findall(rsp)
-    menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[1], i[3], i[2]),
-             'path': plugin.url_for('btsearch', url='search', mname=i[1]),
-             'thumbnail': i[0],
-         } for s, i in enumerate(mitems)]
-    return menus
-
-@plugin.route('/dbtop/<page>')
-def dbtop(page):
-    '''
-    title, img, info
-    '''
-    page = int(page)
-    pc = page * 25
-    rsp = hc.urlopen('http://movie.douban.com/top250?start={0}'.format(pc))
-    mstr = r'class="item".*?alt="(.*?)" src="(.*?)".*?<p class="">\s+(.*?)</p>'
-    mpatt = re.compile(mstr, re.S)
-    mitems = mpatt.findall(rsp)
-    menus = [{'label': '{0}. {1}[{2}]'.format(s+pc+1, i[0], ''.join(
-        i[2].replace('&nbsp;', ' ').replace('<br>', ' ').replace(
-            '\n', ' ').split(' '))),
-              'path': plugin.url_for('btsearch', url='search', mname=i[0]),
-              'thumbnail': i[1],
-         } for s, i in enumerate(mitems)]
-    if  page != 0:
-        menus.append({'label': '上一页',
-                      'path': plugin.url_for('dbtop', page=page-1)})
-    if page != 10:
-        menus.append({'label': '下一页',
-                      'path': plugin.url_for('dbtop', page=page+1)})
-    return menus
-
 
 class HttpClient(object):
     def __init__(self, cookiefile = None):
@@ -729,6 +713,7 @@ random = '%s%06d.%s' % (cachetime, randint(0, 999999),
                         randint(100000000, 9999999999))
 filters = plugin.get_storage('ftcache', TTL=1440)
 magnets = plugin.get_storage('ftcache')
+dbapi = 'https://api.douban.com/v2/movie'
 
 if __name__ == '__main__':
     plugin.run()
