@@ -564,10 +564,50 @@ def dbntop():
          } for s, i in enumerate(mitems)]
     return menus
 
-@plugin.route('/dbscraper/<url>', name='dbsearch')
+@plugin.route('/dbsearch/<url>')
+def dbsearch(url):
+    if url == 'search':
+        urlpre = 'http://movie.douban.com/tag'
+        kb = Keyboard('',u'请输入搜索关键字')
+        kb.doModal()
+        if not kb.isConfirmed(): return
+        sstr = kb.getText()
+        url = '%s/%s?start=0' % (urlpre ,urllib2.quote(sstr))
+    rsp = hc.urlopen(url)
+    rtxt = r'%s%s' % ('class="nbg".*?(subject/\d+).*?src="(.*?)" alt="(.*?)"',
+                      '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
+    patt = re.compile(rtxt, re.S)
+    mitems = patt.findall(rsp)
+    if not mitems: return
+    menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[2], i[4], i[3]),
+              'path': plugin.url_for(
+                  'searchdisp', mname='%s/%s' % (dbapi, i[0])),
+              'thumbnail': i[2],
+         } for s, i in enumerate(mitems)]
+
+    pages = re.findall(r'class="thispage" data-total-page="(\d+)">(\d+)<', rsp)
+    urlpre = '='.join(url.split('=')[:-1])
+    currpg = int(pages[0][1])
+    totalpg = int(pages[0][0])
+    if currpg > 1:
+        menus.append({'label': '上一页',
+                      'path': plugin.url_for(
+                          'dbsearch', url='%s=%s' % (urlpre, (currpg-1)*20))})
+    if currpg < totalpg:
+        menus.append({'label': '下一页',
+                      'path': plugin.url_for(
+                          'dbsearch', url='%s=%s' % (urlpre, (currpg+1)*20))})
+    menus.insert(0, {'label':
+                     '【第%s页/共%s页】返回上级菜单' % (currpg, totalpg),
+                     'path': plugin.url_for('index')})
+    return menus
+
+#@plugin.route('/dbscraper/<url>', name='dbsearch')
 @plugin.route('/dbscraper/<url>', name='dbtop250')
 def dbscraper(url):
-    print url
+    '''
+    由于豆瓣提供的tag搜索api不支持多tag查询，暂时先用dbsearch方法
+    '''
     if url == 'search':
         kb = Keyboard('',u'请输入搜索关键字')
         kb.doModal()
@@ -707,13 +747,13 @@ ppath = plugin.addon.getAddonInfo('path')
 cookiefile = os.path.join(ppath, 'cookie.dat')
 xl = HttpClient(cookiefile)
 hc = HttpClient()
-urlpre = 'http://i.vod.xunlei.com'
 cachetime = int(time.time()*1000)
 random = '%s%06d.%s' % (cachetime, randint(0, 999999),
                         randint(100000000, 9999999999))
 filters = plugin.get_storage('ftcache', TTL=1440)
 magnets = plugin.get_storage('ftcache')
 dbapi = 'https://api.douban.com/v2/movie'
+urlpre = 'http://i.vod.xunlei.com'
 
 if __name__ == '__main__':
     plugin.run()
