@@ -586,20 +586,23 @@ def dbsearch(url):
          } for s, i in enumerate(mitems)]
 
     pages = re.findall(r'class="thispage" data-total-page="(\d+)">(\d+)<', rsp)
-    urlpre = '='.join(url.split('=')[:-1])
-    currpg = int(pages[0][1])
-    totalpg = int(pages[0][0])
-    if currpg > 1:
-        menus.append({'label': '上一页',
-                      'path': plugin.url_for(
-                          'dbsearch', url='%s=%s' % (urlpre, (currpg-1)*20))})
-    if currpg < totalpg:
-        menus.append({'label': '下一页',
-                      'path': plugin.url_for(
-                          'dbsearch', url='%s=%s' % (urlpre, (currpg+1)*20))})
-    menus.insert(0, {'label':
-                     '【第%s页/共%s页】返回上级菜单' % (currpg, totalpg),
-                     'path': plugin.url_for('index')})
+    if pages:
+        urlpre = '='.join(url.split('=')[:-1])
+        currpg = int(pages[0][1])
+        totalpg = int(pages[0][0])
+        if currpg > 1:
+            menus.append({'label': '上一页',
+                          'path': plugin.url_for(
+                              'dbsearch',
+                              url='%s=%s' % (urlpre, (currpg-1)*20))})
+        if currpg < totalpg:
+            menus.append({'label': '下一页',
+                          'path': plugin.url_for(
+                              'dbsearch',
+                              url='%s=%s' % (urlpre, (currpg+1)*20))})
+        menus.insert(0, {'label':
+                         '【第%s页/共%s页】返回上级菜单' % (currpg, totalpg),
+                         'path': plugin.url_for('index')})
     return menus
 
 #@plugin.route('/dbscraper/<url>', name='dbsearch')
