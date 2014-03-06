@@ -216,7 +216,6 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
             pass
         if sel is 1:
             data = {'taskids': taskid+',', 'databases': '0,'}
-            print data
             url = '%s/task_delete?callback=jsonp%s&t=%s' % (
                 urlpre, cachetime, cachetime)
             rsp = xl.urlopen(url, data=urllib.urlencode(data))
@@ -246,7 +245,6 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
     url = '%s/%s&tid=%s&infoid=%s&g_net=1&p=1&uid=%s&noCacheIE=%s' % (
         urlpre, 'fill_bt_list?callback=fill_bt_list', tid, infoid,
         xl.userid, cachetime)
-
     rsp = xl.urlopen(url)
     if not xl.getcookieatt('dynamic.cloud.vip.xunlei.com', 'PHPSESSID'):
         xl.cookiejar.save(cookiefile, ignore_discard=True)
@@ -639,7 +637,6 @@ def dbscraper(url):
 
     start = data['start']
     urlpre = '='.join(url.split('=')[:-1])
-    print urlpre, start, type(start)
     if start != 0:
         menus.append({'label': '上一页',
                       'path': plugin.url_for(
@@ -653,7 +650,6 @@ def dbscraper(url):
 
 @plugin.route('/searchdisp/<mname>')
 def searchdisp(mname):
-    print mname
     if 'http' in mname:
         rsp = hc.urlopen(mname)
         data = json.loads(rsp)
