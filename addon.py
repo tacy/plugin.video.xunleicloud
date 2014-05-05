@@ -252,13 +252,14 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
                 plugin.notify(msg='删除任务失败,请稍候重试')
             return
 
+    #Ugly process, Don't support cloud url
     if lxurl and len(lxurl) > 2:
         cid = magnet
         gcid= re.sub(r'.*?&g=', '', lxurl)[:40]
         title = title
-        video = getcloudvideourl(gcid, lxurl, title)
-        if not video: return
-        player(video[1], gcid, cid, title)
+        #video = getcloudvideourl(gcid, lxurl, title)
+        #if not video: return
+        player(lxurl, gcid, cid, title)
         return
     if magnet and len(magnet)>40:
         tid = gettaskid(magnet)
@@ -285,7 +286,8 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
          i['percent'],
          i['cid'],
          re.sub(r'.*?&g=', '', i['downurl'])[:40],
-         i['downurl']
+         i['downurl'],
+         i['url']
      ) for i in data['Result']['Record'] if 'movie' in i['openformat']
         and i['percent']==100]
 
@@ -302,20 +304,25 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
     else:
         mov = mitems[0]
 
-    (name, _, _, cid, gcid, downurl) = mov
-    video = getcloudvideourl(gcid, downurl, name.encode('utf-8'))
-    if not video: return
-    player(video[1], gcid, cid, name)
+    (name, _, _, cid, gcid, downurl, bturl) = mov
 
-def player(url, gcid, cid, title):
+    videos = getcloudvideourl(bturl, name.encode('utf-8'))
+    videos.insert(0, ('源码', downurl))
+    selitem = dialog.select('清晰度', [v[0] for v in videos])
+    if selitem is -1: return
+    v = videos[selitem]
+    player(v[1], gcid, cid, name, True)
+
+def player(url, gcid, cid, title, finalurl=False):
     '''
     play video, add subtitle
     '''
-    rsp = xl.urlopen(url, redirect=False)
+    if not finalurl:
+        url = xl.urlopen(url, redirect=False)
     #cks = dict((ck.name, ck.value) for ck in xl.cookiejar)
     cks = ['%s=%s' % (ck.name, ck.value) for ck in xl.cookiejar]
     movurl = '%s|%s&Cookie=%s' % (
-        rsp, urllib.urlencode(xl.headers), urllib2.quote('; '.join(cks)))
+        url, urllib.urlencode(xl.headers), urllib2.quote('; '.join(cks)))
 
     #for ck in xl.cookiejar:
     #    print ck.name, ck.value
@@ -516,22 +523,30 @@ def gettaskid(magnet):
     tid = magnets[magnet]
     return tid
 
-def getcloudvideourl(gcid, surl, title):
+def getcloudvideourl(bturl, title):
     '''
     resolve video url
     '''
-    dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
-        cloudurlpre, xl.userid, gcid,
-        urllib2.quote(title), cachetime)
+    dlpre = '{0}/req_get_method_vod'.format(cloudurlpre)
+    #dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
+    #    cloudurlpre, xl.userid, gcid,
+    #    urllib2.quote(title), cachetime)
+    dl = '{0}?url={1}&platform=0&userid={2}&sessionid={3}&cache={4}'.format(
+        dlpre, urllib.quote(bturl), xl.userid, xl.sid, cachetime)
     rsp = xl.urlopen(dl)
+
     vturls = json.loads(rsp)
-    typ = {'Full_HD':'1080P', 'HD':'720P', 'SD':'标清'}
-    vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
-    vtyps.insert(0, ('源码', surl))
-    selitem = dialog.select('清晰度', [v[0] for v in vtyps])
-    if selitem is -1: return
-    vtyp = vtyps[selitem]
-    return vtyp
+    typ = {'356608':'1080P', '282880':'720P', '225536':'标清'}
+
+    vtyps = [(typ[str(i['spec_id'])], i['vod_url_dt17'])
+             for i in vturls['resp']['vodinfo_list']
+             if str(i['spec_id']) in typ]
+    #vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
+    #vtyps.insert(0, ('源码', surl))
+    #selitem = dialog.select('清晰度', [v[0] for v in vtyps])
+    #if selitem is -1: return
+    #vtyp = vtyps[selitem]
+    return vtyps
 
 @plugin.route('/dbmovie')
 def dbmovie():
