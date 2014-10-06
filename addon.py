@@ -497,8 +497,9 @@ def gettaskid(magnet):
             raise NotImplementedError(repr(rsp))
         args = success.group(1).decode('utf-8')
         args = eval(args.replace('new Array', ''))
+        print args
         _, cid, tsize, btname, _, names, sizes_, sizes, _, types, \
-            findexes, timestamp, _ = args
+            findexes, _, timestamp, _ = args
         def toList(x):
             if type(x) in (list, tuple):
                 return x
