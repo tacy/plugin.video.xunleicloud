@@ -219,7 +219,7 @@ def playcloudvideo(vinfo):
     else:
         vtyp = vtyps[0]
 
-    player(vtyp[1], gcid, cid, title)
+    player(vtyp[1], gcid, cid, title, True)
 
 @plugin.route('/playlxvideo/<magnet>', name='playlxmagnet')
 @plugin.route('/playlxvideo/<magnet>/<taskid>/<lxurl>/<title>',
@@ -305,8 +305,8 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
         mov = mitems[0]
 
     (name, _, _, cid, gcid, downurl, bturl) = mov
-
-    videos = getcloudvideourl(bturl, name.encode('utf-8'))
+    videos = []
+    #videos = getcloudvideourl(bturl, name.encode('utf-8'))
     videos.insert(0, ('源码', downurl))
     selitem = dialog.select('清晰度', [v[0] for v in videos])
     if selitem is -1: return
@@ -338,7 +338,7 @@ def player(url, gcid, cid, title, finalurl=False):
         subtinfo, urllib.urlencode(xl.headers), urllib2.quote('; '.join(cks)))
     subtitle = xl.urlopen(subtinfo)
     sinfos = json.loads(subtitle)
-    print sinfos
+    #print sinfos
     surls = ''
     if 'sublist' in sinfos and len(sinfos['sublist']):
         surls = [sinfo['surl'] for sinfo in sinfos['sublist']]
