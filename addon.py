@@ -13,10 +13,10 @@ from StringIO import StringIO
 from xbmcswift2 import xbmc
 from xbmcswift2 import Plugin
 from xbmcswift2 import xbmcgui
-from xbmcswift2 import xbmcplugin
 from zhcnkbd import Keyboard
 
 plugin = Plugin()
+
 
 @plugin.route('/')
 def index():
@@ -46,6 +46,7 @@ def index():
 
     return item
 
+
 @plugin.route('/login')
 def login():
     '''
@@ -58,7 +59,7 @@ def login():
         return
     xl = HttpClient()
 
-    #get verify code
+    # get verify code
     vfcodeurl = 'http://login.xunlei.com/check?u={0}&cachetime={1}'.format(
         user, cachetime)
     xl.urlopen(vfcodeurl)
@@ -69,7 +70,7 @@ def login():
         if not vfcode:
             return
 
-    #encoding password str
+    # encoding password str
     if not re.match(r'^[0-9a-f]{32}$', passwd):
         passwd = xl.md5(xl.md5(passwd))
 
@@ -80,7 +81,7 @@ def login():
          'p': passwd,
          'verifycode': vfcode,
          'login_enable': '1',
-         'login_hour': '720',}
+         'login_hour': '720', }
     )
 
     xl.urlopen('http://login.xunlei.com/sec2login/', data=data)
@@ -88,7 +89,7 @@ def login():
     xl.userid = xl.getcookieatt('.xunlei.com', 'userid')
     xl.sid = xl.getcookieatt('.xunlei.com', 'sessionid')
 
-    #login lixian space
+    # login lixian space
     xl.urlopen(
         'http://dynamic.lixian.vip.xunlei.com/login?cachetime=%s' % cachetime)
     urlpre = '%s/%s' % (lxurlpre, 'interface/showtask_unfresh')
@@ -103,10 +104,11 @@ def login():
     blogresult = xl.getcookieatt('.xunlei.com', 'blogresult')
     rst = int(blogresult)
     loginmsgs = ['登入成功', '验证码错误', '密码错误', '用户名不存在']
-    plugin.notify(msg=loginmsgs[rst] if rst<3 else '未知错误')
-    #for ck in xl.cookiejar:
+    plugin.notify(msg=loginmsgs[rst] if rst < 3 else '未知错误')
+    # for ck in xl.cookiejar:
     #    print (ck.name, ck.value)
     return
+
 
 @plugin.route('/cloudspace')
 def cloudspace():
@@ -124,9 +126,10 @@ def cloudspace():
         {'label': urllib2.unquote(v['file_name'].encode('utf-8')),
          'path': plugin.url_for('playcloudvideo',
                                 vinfo=str((v['src_url'], v['gcid'],
-                                           v['cid'], v['file_name'])))
-     } for v in vods if 'src_url' in v ]
+                                           v['cid'], v['file_name'])))}
+        for v in vods if 'src_url' in v]
     return menu
+
 
 @plugin.route('/lxspace/<page>')
 def lxspace(page):
@@ -150,8 +153,8 @@ def lxspace(page):
                                 magnet=i['cid'],
                                 lxurl=i['lixian_url'] if i['lixian_url'] else 'bt',
                                 title=i['taskname'].encode('utf-8'),
-                                taskid=i['id']),
-     } for i in data['info']['tasks']]
+                                taskid=i['id']), }
+        for i in data['info']['tasks']]
 
     total = int(data['info']['user']['total_num'])
     totalpgs = (total+29) // 30
@@ -165,6 +168,7 @@ def lxspace(page):
     menus.insert(0, {'label': '【第%s页/共%s页】返回上级菜单' % (page, totalpgs),
                      'path': plugin.url_for('index')})
     return menus
+
 
 @plugin.route('/playcloudvideo/<vinfo>')
 def playcloudvideo(vinfo):
@@ -188,7 +192,8 @@ def playcloudvideo(vinfo):
             selitem = dialog.select('播放选择',
                                     [urllib2.unquote(v['name'].encode('utf-8'))
                                      for v in videos])
-            if selitem is -1: return
+            if selitem is -1:
+                return
             video = videos[selitem]
         else:
             video = videos[0]
@@ -200,26 +205,29 @@ def playcloudvideo(vinfo):
         gcid = _vinfo[1]
         cid = _vinfo[2]
         title = urllib2.quote(_vinfo[3].encode('utf-8'))
-    else: return
+    else:
+        return
 
     dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
-        cloudurlpre ,xl.userid, gcid, title, cachetime)
+        cloudurlpre, xl.userid, gcid, title, cachetime)
     rsp = xl.urlopen(dl)
     vturls = json.loads(rsp)
-    typ = {'Full_HD':'1080P', 'HD':'720P', 'SD':'标清'}
+    typ = {'Full_HD': '1080P', 'HD': '720P', 'SD': '标清'}
     vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
 
     if not vtyps:
         plugin.notify(msg='视频转码进行中，请稍候尝试从云播空间菜单进入播放')
         return
-    if len(vtyps)>1:
+    if len(vtyps) > 1:
         selitem = dialog.select('清晰度', [v[0] for v in vtyps])
-        if selitem is -1: return
+        if selitem is -1:
+            return
         vtyp = vtyps[selitem]
     else:
         vtyp = vtyps[0]
 
     player(vtyp[1], gcid, cid, title, True)
+
 
 @plugin.route('/playlxvideo/<magnet>', name='playlxmagnet')
 @plugin.route('/playlxvideo/<magnet>/<taskid>/<lxurl>/<title>',
@@ -252,16 +260,16 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
                 plugin.notify(msg='删除任务失败,请稍候重试')
             return
 
-    #Ugly process, Don't support cloud url
+    # Ugly process, Don't support cloud url
     if lxurl and len(lxurl) > 2:
         cid = magnet
-        gcid= re.sub(r'.*?&g=', '', lxurl)[:40]
+        gcid = re.sub(r'.*?&g=', '', lxurl)[:40]
         title = title
-        #video = getcloudvideourl(gcid, lxurl, title)
-        #if not video: return
+        # video = getcloudvideourl(gcid, lxurl, title)
+        # if not video: return
         player(lxurl, gcid, cid, title)
         return
-    if magnet and len(magnet)>40:
+    if magnet and len(magnet) > 40:
         tid = gettaskid(magnet)
         infoid = magnet[-40:]
     else:
@@ -280,16 +288,15 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
         plugin.notify('该离线任务已删除,请重新添加')
         return
 
-    mitems = [
-        (i['title'],
-         i['size'],
-         i['percent'],
-         i['cid'],
-         re.sub(r'.*?&g=', '', i['downurl'])[:40],
-         i['downurl'],
-         i['url']
-     ) for i in data['Result']['Record'] if 'movie' in i['openformat']
-        and i['percent']==100]
+    mitems = [(i['title'],
+               i['size'],
+               i['percent'],
+               i['cid'],
+               re.sub(r'.*?&g=', '', i['downurl'])[:40],
+               i['downurl'],
+               i['url'])
+              for i in data['Result']['Record'] if 'movie' in i['openformat']
+              and i['percent'] == 100]
 
     if not mitems:
         plugin.notify('离线下载进行中，请稍候从离线空间播放')
@@ -297,21 +304,24 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
 
     if len(mitems) > 1:
         sel = dialog.select(
-            '播放选择',['[%s]%s[%s]' % (i[2], i[0], i[1])
-                        for i in mitems])
-        if sel is -1: return
+            '播放选择',
+            ['[%s]%s[%s]' % (i[2], i[0], i[1]) for i in mitems])
+        if sel is -1:
+            return
         mov = mitems[sel]
     else:
         mov = mitems[0]
 
     (name, _, _, cid, gcid, downurl, bturl) = mov
     videos = []
-    #videos = getcloudvideourl(bturl, name.encode('utf-8'))
+    # videos = getcloudvideourl(bturl, name.encode('utf-8'))
     videos.insert(0, ('源码', downurl))
     selitem = dialog.select('清晰度', [v[0] for v in videos])
-    if selitem is -1: return
+    if selitem is -1:
+        return
     v = videos[selitem]
     player(v[1], gcid, cid, name, True)
+
 
 def player(url, gcid, cid, title, finalurl=False):
     '''
@@ -319,14 +329,14 @@ def player(url, gcid, cid, title, finalurl=False):
     '''
     if not finalurl:
         url = xl.urlopen(url, redirect=False)
-    #cks = dict((ck.name, ck.value) for ck in xl.cookiejar)
+    # cks = dict((ck.name, ck.value) for ck in xl.cookiejar)
     cks = ['%s=%s' % (ck.name, ck.value) for ck in xl.cookiejar]
     movurl = '%s|%s&Cookie=%s' % (
         url, urllib.urlencode(xl.headers), urllib2.quote('; '.join(cks)))
 
-    #for ck in xl.cookiejar:
+    # for ck in xl.cookiejar:
     #    print ck.name, ck.value
-    listitem=xbmcgui.ListItem(label= title)
+    listitem = xbmcgui.ListItem(label=title)
     listitem.setInfo(type="Video", infoLabels={'Title': title})
     player = xbmc.Player()
     player.play(movurl, listitem)
@@ -338,7 +348,7 @@ def player(url, gcid, cid, title, finalurl=False):
         subtinfo, urllib.urlencode(xl.headers), urllib2.quote('; '.join(cks)))
     subtitle = xl.urlopen(subtinfo)
     sinfos = json.loads(subtitle)
-    #print sinfos
+    # print sinfos
     surls = ''
     if 'sublist' in sinfos and len(sinfos['sublist']):
         surls = [sinfo['surl'] for sinfo in sinfos['sublist']]
@@ -355,7 +365,8 @@ def player(url, gcid, cid, title, finalurl=False):
                 surl, urllib.urlencode(xl.headers),
                 urllib2.quote('; '.join(cks))))
 
-    #xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
+    # xbmcplugin.setResolvedUrl(int(sys.argv[1]), True, listitem)
+
 
 @plugin.route('/btdigg/<url>')
 def btdigg(url, mname=''):
@@ -365,11 +376,13 @@ def btdigg(url, mname=''):
     if url == 'search':
         url = 'http://btdigg.org/search?q='
         if not mname:
-            kb = Keyboard('',u'请输入搜索关键字')
+            kb = Keyboard('', u'请输入搜索关键字')
             kb.doModal()
-            if not kb.isConfirmed(): return
+            if not kb.isConfirmed():
+                return
             mname = kb.getText()
-            if not mname: return
+            if not mname:
+                return
         url = url + urllib2.quote(mname)
     else:
         url = 'http://btdigg.org' + url
@@ -397,6 +410,7 @@ def btdigg(url, mname=''):
                      'path': plugin.url_for('index')})
     return menus
 
+
 @plugin.route('/torrentz/<url>')
 def torrentz(url, mname=''):
     '''
@@ -406,7 +420,8 @@ def torrentz(url, mname=''):
     if url == 'search':
         url = 'http://torrentz.eu/search?f='
         sel = dialog.select('选择节目类型', ('电影', '电视', '视频', '自定义'))
-        if sel is -1: return
+        if sel is -1:
+            return
         if sel == 0:
             typ = 'movie*+'
         if sel == 1:
@@ -416,15 +431,16 @@ def torrentz(url, mname=''):
         if sel == 3:
             typ = ''
         if (not mname) or (mname and not typ):
-            kb = Keyboard('',u'请输入搜索关键字')
+            kb = Keyboard('', u'请输入搜索关键字')
             kb.doModal()
-            if not kb.isConfirmed(): return
+            if not kb.isConfirmed():
+                return
             _mname = kb.getText()
             if mname:
                 mname = _mname + ' ' + mname
             else:
                 mname = _mname
-        #stxt = '%s%s' % (typ, mstr.replace(' ', '+'))
+        # stxt = '%s%s' % (typ, mstr.replace(' ', '+'))
         url = '%s%s%s&p=0' % (
             'https://torrentz.eu/search?f=', typ, urllib.quote_plus(mname))
     print url
@@ -437,7 +453,8 @@ def torrentz(url, mname=''):
                                      magnet='magnet:?xt=urn:btih:%s' % i[0])
               } for i in mitems]
 
-    cnt = re.findall(r'<h2 style="border-bottom: none">([,0-9]+) Torrents', rsp)
+    cnt = re.findall(
+        r'<h2 style="border-bottom: none">([,0-9]+) Torrents', rsp)
     if cnt:
         cnt = int(cnt[0].replace(',', ''))
         pages = (cnt + 49) // 50
@@ -456,20 +473,21 @@ def torrentz(url, mname=''):
                          'path': plugin.url_for('index')})
     return menus
 
+
 def addmagnet(magnetid):
     '''
     add magnet link to cloud space.
     GET /req_del_list?flag=0&sessionid=sid&t=cachetime&info_hash=ihash
     Host: i.vod.xunlei.com
     '''
-    data = {"urls":[{"id":0,"url":magnetid}]}
+    data = {"urls": [{"id": 0, "url": magnetid}]}
     reqvideo = '%s/req_video_name?from=vlist&platform=0' % cloudurlpre
     rsp = xl.urlopen(reqvideo, data=data)
     minfo = json.loads(rsp)
     acdt = minfo['resp']['res'][0]
-    data = {"urls":
-            [{'id': acdt['id'], "url": acdt['url'], "name": acdt['name']},]
-    }
+    data = {"urls": [{'id': acdt['id'],
+                      "url": acdt['url'],
+                      "name": acdt['name']}, ]}
 
     addvideo = '{0}/req_add_record?userid={1}&sessionid={2}&{3}'.format(
         cloudurlpre, xl.userid, xl.sid, 'folder_id=0&from=vlist&platform=0')
@@ -478,17 +496,19 @@ def addmagnet(magnetid):
     ihash = acinfo['resp']['res'][0]['url'][5:]
     return ihash
 
+
 def gettaskid(magnet):
     '''
     add magnet link to lixian space.
     http://verify.xunlei.com/image?t=MVA&cachetime=1392381968052
     '''
-    urlpre ='%s/%s' % (lxurlpre, 'interface')
+    urlpre = '%s/%s' % (lxurlpre, 'interface')
     if magnet not in magnets:
         url = '%s/url_query?callback=queryUrl&u=%s&random=%s&tcache=%s' % (
             urlpre, urllib2.quote(magnet), randomtime, cachetime)
-
+        print url
         rsp = xl.urlopen(url)
+        print rsp
         success = re.search(r'queryUrl(\(1,.*\))\s*$', rsp, re.S)
         if not success:
             already_exists = re.search(r"queryUrl\(-1,'([^']{40})", rsp, re.S)
@@ -500,36 +520,40 @@ def gettaskid(magnet):
         print args
         _, cid, tsize, btname, _, names, sizes_, sizes, _, types, \
             findexes, _, timestamp, _ = args
+
         def toList(x):
             if type(x) in (list, tuple):
                 return x
             else:
                 return [x]
-        data = {'uid':xl.userid, 'btname':btname, 'cid':cid, 'tsize':tsize,
-                'findex':''.join(x+'_' for x in toList(findexes)),
-                'size':''.join(x+'_' for x in toList(sizes)),
-                'from':'0'}
+        data = {'uid': xl.userid, 'btname': btname, 'cid': cid, 'tsize': tsize,
+                'findex': ''.join(x+'_' for x in toList(findexes)),
+                'size': ''.join(x+'_' for x in toList(sizes)),
+                'from': '0'}
         jsonp = 'jsonp%s' % cachetime
         commiturl = '%s/bt_task_commit?callback=%s' % (urlpre, jsonp)
         rsp = xl.urlopen(commiturl, data=urllib.urlencode(data))
         while '"progress":-11' in rsp or '"progress":-12' in rsp:
             vfcode = xl.getvfcode(
                 'http://verify2.xunlei.com/image?t=MVA&cachetime')
-            if not vfcode: return
+            if not vfcode:
+                return
             data['verify_code'] = vfcode
             rsp = xl.urlopen(commiturl, data=urllib.urlencode(data))
         tids = re.findall(r'"id":"(\d+)"', rsp)
-        if not tids: return
+        if not tids:
+            return
         magnets[magnet] = tids[0]
     tid = magnets[magnet]
     return tid
+
 
 def getcloudvideourl(bturl, title):
     '''
     resolve video url
     '''
     dlpre = '{0}/req_get_method_vod'.format(cloudurlpre)
-    #dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
+    # dl = '{0}/vod_dl_all?userid={1}&gcid={2}&filename={3}&t={4}'.format(
     #    cloudurlpre, xl.userid, gcid,
     #    urllib2.quote(title), cachetime)
     dl = '{0}?url={1}&platform=0&userid={2}&sessionid={3}&cache={4}'.format(
@@ -537,17 +561,19 @@ def getcloudvideourl(bturl, title):
     rsp = xl.urlopen(dl)
 
     vturls = json.loads(rsp)
-    typ = {'356608':'1080P', '282880':'720P', '225536':'标清'}
+    typ = {'356608': '1080P', '282880': '720P', '225536': '标清'}
 
     vtyps = [(typ[str(i['spec_id'])], i['vod_url_dt17'])
              for i in vturls['resp']['vodinfo_list']
              if str(i['spec_id']) in typ]
-    #vtyps = [(typ[k], v['url']) for (k, v) in vturls.iteritems() if 'url' in v]
-    #vtyps.insert(0, ('源码', surl))
-    #selitem = dialog.select('清晰度', [v[0] for v in vtyps])
-    #if selitem is -1: return
-    #vtyp = vtyps[selitem]
+    # vtyps = [(typ[k], v['url'])
+    #         for (k, v) in vturls.iteritems() if 'url' in v]
+    # vtyps.insert(0, ('源码', surl))
+    # selitem = dialog.select('清晰度', [v[0] for v in vtyps])
+    # if selitem is -1: return
+    # vtyp = vtyps[selitem]
     return vtyps
+
 
 @plugin.route('/dbmovie')
 def dbmovie():
@@ -563,7 +589,7 @@ def dbmovie():
             typs = typpatt.findall(ft[1])
             if '类型' not in ft[0]:
                 typs.insert(0, '不限')
-            filters[ft[0]] =  tuple(typs)
+            filters[ft[0]] = tuple(typs)
     typs = filters['类型']
     menus = [{'label': t,
               'path': plugin.url_for(
@@ -571,37 +597,41 @@ def dbmovie():
               } for t in typs]
     return menus
 
+
 @plugin.route('/dbcate/<typ>/<page>')
 def dbcate(typ, page):
     '''
     get catetory content
     '''
-    params  = {'district': '', 'era': '', 'category': 'all',
-               'unwatched': 'false', 'available': 'false', 'sortBy': 'score',
-               'page': page, 'ck': 'null', 'types[]': ''}
+    params = {'district': '', 'era': '', 'category': 'all',
+              'unwatched': 'false', 'available': 'false', 'sortBy': 'score',
+              'page': page, 'ck': 'null', 'types[]': ''}
     typ = eval(typ)
     if 'district' in typ and not typ['district']:
         sel = dialog.select('地区', filters['地区'])
-        if sel is -1: return
+        if sel is -1:
+            return
         typ['district'] = filters['地区'][sel]
     if 'era' in typ and not typ['era']:
         sel = dialog.select('年代', filters['年代'])
-        if sel is -1: return
+        if sel is -1:
+            return
         typ['era'] = filters['年代'][sel]
     params.update(typ)
     data = urllib.urlencode(params)
     rsp = hc.urlopen('http://movie.douban.com/category/q',
-                data=data.replace(urllib2.quote('不限'), ''))
+                     data=data.replace(urllib2.quote('不限'), ''))
     minfo = json.loads(rsp)
 
     menus = [{'label': '[%s].%s[%s][%s]' % (m['release_year'], m['title'],
-                                           m['rate'], m['abstract']),
+                                            m['rate'], m['abstract']),
               'path': plugin.url_for(
                   'searchdisp',
                   mname='%s/subject/%s' % (dbapi, m['url'].split('/')[-2])),
               'thumbnail': m['poster'],
               } for m in minfo['subjects']]
-    if not menus: return
+    if not menus:
+        return
     if int(page) > 1:
         menus.append({'label': '上一页', 'path': plugin.url_for(
             'dbcate', typ=str(typ), page=int(page)-1)})
@@ -611,9 +641,10 @@ def dbcate(typ, page):
     ntyp.update({'district': '', 'era': ''})
     menus.insert(0, {
         'label': '【按照条件过滤】【地区】【年代】选择',
-        'path': plugin.url_for('dbcate', page=1, typ=str(ntyp)),}
+        'path': plugin.url_for('dbcate', page=1, typ=str(ntyp)), }
     )
     return menus
+
 
 @plugin.route('/dbntop')
 def dbntop():
@@ -630,10 +661,11 @@ def dbntop():
     menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[2], i[4], i[3]),
               'path': plugin.url_for(
                   'searchdisp',
-                  mname='%s/%s' % (dbapi,i[0])),
-              'thumbnail': i[1],
-         } for s, i in enumerate(mitems)]
+                  mname='%s/%s' % (dbapi, i[0])),
+              'thumbnail': i[1], }
+             for s, i in enumerate(mitems)]
     return menus
+
 
 @plugin.route('/dbsearch/<url>')
 def dbsearch(url):
@@ -642,22 +674,24 @@ def dbsearch(url):
     '''
     if url == 'search':
         urlpre = 'http://movie.douban.com/tag'
-        kb = Keyboard('',u'请输入搜索关键字')
+        kb = Keyboard('', u'请输入搜索关键字')
         kb.doModal()
-        if not kb.isConfirmed(): return
+        if not kb.isConfirmed():
+            return
         sstr = kb.getText()
-        url = '%s/%s?start=0' % (urlpre ,urllib2.quote(sstr))
+        url = '%s/%s?start=0' % (urlpre, urllib2.quote(sstr))
     rsp = hc.urlopen(url)
     rtxt = r'%s%s' % ('class="nbg".*?(subject/\d+).*?src="(.*?)" alt="(.*?)"',
                       '.*?class="pl">(.*?)</p>.*?rating_nums">(.*?)<')
     patt = re.compile(rtxt, re.S)
     mitems = patt.findall(rsp)
-    if not mitems: return
+    if not mitems:
+        return
     menus = [{'label': '{0}. {1}[{2}][{3}]'.format(s, i[2], i[4], i[3]),
               'path': plugin.url_for(
                   'searchdisp', mname='%s/%s' % (dbapi, i[0])),
-              'thumbnail': i[2],
-         } for s, i in enumerate(mitems)]
+              'thumbnail': i[2], }
+             for s, i in enumerate(mitems)]
 
     pages = re.findall(r'class="thispage" data-total-page="(\d+)">(\d+)<', rsp)
     if pages:
@@ -679,16 +713,18 @@ def dbsearch(url):
                          'path': plugin.url_for('index')})
     return menus
 
-#@plugin.route('/dbscraper/<url>', name='dbsearch')
+
+# @plugin.route('/dbscraper/<url>', name='dbsearch')
 @plugin.route('/dbscraper/<url>', name='dbtop250')
 def dbscraper(url):
     '''
     由于豆瓣提供的tag搜索api不支持多tag关联查询，暂时先用dbsearch方法
     '''
     if url == 'search':
-        kb = Keyboard('',u'请输入搜索关键字')
+        kb = Keyboard('', u'请输入搜索关键字')
         kb.doModal()
-        if not kb.isConfirmed(): return
+        if not kb.isConfirmed():
+            return
         sstr = kb.getText()
         url = '%s/search?tag=%s&start=0' % (dbapi, sstr)
     if url == 'dbtop250':
@@ -697,7 +733,8 @@ def dbscraper(url):
     rsp = hc.urlopen(url)
     data = json.loads(rsp)
     movs = data['subjects']
-    if not movs: return
+    if not movs:
+        return
     menus = [{
         'label': '{0}.{1}[{2}年][{3}分][{4}人收藏]'.format(
             s, m['title'].encode('utf-8'), m['year'], m['rating']['average'],
@@ -705,8 +742,8 @@ def dbscraper(url):
         ),
         'path': plugin.url_for(
             'searchdisp',
-            mname = str((m['title'].encode('utf-8'),
-                           m['original_title'].encode('utf-8')))
+            mname=str((m['title'].encode('utf-8'),
+                       m['original_title'].encode('utf-8')))
         ),
         'thumbnail': m['images']['large'],
     } for s, m in enumerate(movs)]
@@ -720,9 +757,10 @@ def dbscraper(url):
     menus.append({'label': '下一页',
                   'path': plugin.url_for(
                       view, url='%s=%s' % (urlpre, start+20))})
-    menus.insert(0, {'label':'【当前%s页】返回上级菜单' % str(start//20 + 1),
+    menus.insert(0, {'label': '【当前%s页】返回上级菜单' % str(start//20 + 1),
                      'path': plugin.url_for('index')})
     return menus
+
 
 @plugin.route('/searchdisp/<mname>')
 def searchdisp(mname):
@@ -747,11 +785,12 @@ def searchdisp(mname):
         menus = btdigg('search', mname=_mname[1])
     return menus
 
+
 class HttpClient(object):
     '''
     http client, support cookie
     '''
-    def __init__(self, cookiefile = None):
+    def __init__(self, cookiefile=None):
         self.cookiejar = cookielib.LWPCookieJar()
         if cookiefile and os.path.exists(cookiefile):
             self.cookiejar.load(
@@ -778,7 +817,7 @@ class HttpClient(object):
     def urlopen(self, url, redirect=True, **args):
         if 'data' in args and type(args['data']) == dict:
             args['data'] = json.dumps(args['data'])
-            #arg['data'] = urllib.urlencode(args['data'])
+            # arg['data'] = urllib.urlencode(args['data'])
             self.headers['Content-Type'] = 'application/json'
         if not redirect:
             self.opener = urllib2.build_opener(
@@ -806,7 +845,7 @@ class HttpClient(object):
         if not confirmed:
             return
         info = cdg.getText()
-        #del cdg
+        # del cdg
         vfcode, vfcookie = info.split('||')
         k, v = vfcookie.split('; ')[0].split('=')
         self.setcookie('.xunlei.com', k, v)
@@ -836,7 +875,7 @@ magnets = plugin.get_storage('ftcache')
 
 cachetime = int(time.time()*1000)
 randomtime = '%s%06d.%s' % (cachetime, randint(0, 999999),
-                        randint(100000000, 9999999999))
+                            randint(100000000, 9999999999))
 
 xl = HttpClient(cookiefile)
 hc = HttpClient()
