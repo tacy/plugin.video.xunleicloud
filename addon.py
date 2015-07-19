@@ -32,7 +32,7 @@ def index():
          'path': plugin.url_for('lxspace', page=1)},
         {'label': '[中文搜索] - BTdigg.org',
          'path': plugin.url_for('btdigg', url='search')},
-        {'label': '[英文搜索] - TorrentZ.eu',
+        {'label': '[英文搜索] - ExtraTorrent.cc',
          'path': plugin.url_for('torrentz', url='search')},
         {'label': '[豆瓣电影] - 标签搜索',
          'path': plugin.url_for('dbsearch', url='search')},
@@ -269,8 +269,14 @@ def playlxvideo(magnet, taskid=None, lxurl=None, title=None):
         # if not video: return
         player(lxurl, gcid, cid, title)
         return
-    if magnet and len(magnet) > 40:
-        tid = gettaskid(magnet)
+    #if magnet and len(magnet) > 40:
+    if magnet and 'torrent' in magnet:
+        url = 'http://extratorrent.cc%s' % (magnet)
+        rsp = hc.urlopen(url)
+        #print url
+        magnetid = re.search(r'magnet:\?xt=urn:btih:\S{40}', rsp)
+        #print magnetid.group(0)
+        tid = gettaskid(magnetid.group(0))
         infoid = magnet[-40:]
     else:
         infoid = magnet
@@ -418,18 +424,14 @@ def torrentz(url, mname=''):
     thepiratebay.org.
     '''
     if url == 'search':
-        url = 'http://torrentz.eu/search?f='
-        sel = dialog.select('选择节目类型', ('电影', '电视', '视频', '自定义'))
+        url = 'http://extratorrent.cc/search/?s_cat='
+        sel = dialog.select('选择节目类型', ('电影', '电视'))
         if sel is -1:
             return
         if sel == 0:
-            typ = 'movie*+'
+            typ = '4'
         if sel == 1:
-            typ = 'show*+'
-        if sel == 2:
-            typ = 'video*+'
-        if sel == 3:
-            typ = ''
+            typ = '8'
         if (not mname) or (mname and not typ):
             kb = Keyboard('', u'请输入搜索关键字')
             kb.doModal()
@@ -441,36 +443,35 @@ def torrentz(url, mname=''):
             else:
                 mname = _mname
         # stxt = '%s%s' % (typ, mstr.replace(' ', '+'))
-        url = '%s%s%s&p=0' % (
-            'https://torrentz.eu/search?f=', typ, urllib.quote_plus(mname))
-    print url
+        url = '%s%s&search=%s&page=1' % (url, typ, urllib.quote_plus(mname))
+    #print url
     rsp = hc.urlopen(url)
     mitems = re.findall(
-        r'"/([0-9a-z]{40})">(.*?)</a>.*?class="s">([^>]+)<', rsp, re.S)
+        r'href="(/torrent\/[0-9]+\/\S+html)" title="view (.*?) torrent"', rsp)
 
-    menus = [{'label': '%s[%s]' % (re.sub(r'<.*?>', '', i[1]), i[2]),
-              'path': plugin.url_for('playlxmagnet',
-                                     magnet='magnet:?xt=urn:btih:%s' % i[0])
+    print mitems
+    menus = [{'label': i[1],
+              'path': plugin.url_for('playlxmagnet', magnet=i[0])
               } for i in mitems]
 
-    cnt = re.findall(
-        r'<h2 style="border-bottom: none">([,0-9]+) Torrents', rsp)
-    if cnt:
-        cnt = int(cnt[0].replace(',', ''))
-        pages = (cnt + 49) // 50
-        currpg = int(url.split('=')[-1])
-        urlpre = '='.join(url.split('=')[:-1])
-        if currpg > 0:
-            menus.append({'label': '上一页',
-                          'path': plugin.url_for(
-                              'torrentz', url='%s=%s' % (urlpre, currpg-1))})
-        if (currpg+1) < pages:
-            menus.append({'label': '下一页',
-                          'path': plugin.url_for(
-                              'torrentz', url='%s=%s' % (urlpre, currpg+1))})
-        menus.insert(0, {'label':
-                         '【第%s页/共%s页】返回上级菜单' % (currpg+1, pages),
-                         'path': plugin.url_for('index')})
+    #cnt = re.findall(
+    #    r'<h2 style="border-bottom: none">([,0-9]+) Torrents', rsp)
+    #if cnt:
+    #    cnt = int(cnt[0].replace(',', ''))
+    #    pages = (cnt + 49) // 50
+    #    currpg = int(url.split('=')[-1])
+    #    urlpre = '='.join(url.split('=')[:-1])
+    #    if currpg > 0:
+    #        menus.append({'label': '上一页',
+    #                      'path': plugin.url_for(
+    #                          'torrentz', url='%s=%s' % (urlpre, currpg-1))})
+    #    if (currpg+1) < pages:
+    #        menus.append({'label': '下一页',
+    #                      'path': plugin.url_for(
+    #                          'torrentz', url='%s=%s' % (urlpre, currpg+1))})
+    #    menus.insert(0, {'label':
+    #                     '【第%s页/共%s页】返回上级菜单' % (currpg+1, pages),
+    #                     'path': plugin.url_for('index')})
     return menus
 
 
